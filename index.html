@@ -69,6 +69,7 @@ label{display:block;font-size:13px;font-weight:650;margin:10px 0 5px}input,selec
 table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid var(--line);font-size:14px}th{color:var(--muted);font-size:12px}.empty{text-align:center;padding:28px;color:var(--muted)}
 dialog{border:0;border-radius:13px;padding:0;width:min(560px,calc(100% - 24px));box-shadow:0 15px 50px #0005}dialog::backdrop{background:#0006}.modal{padding:18px}.modal h2{margin-bottom:3px}.toast{position:fixed;right:16px;bottom:16px;background:var(--text);color:#fff;padding:11px 14px;border-radius:9px;box-shadow:0 6px 20px #0003;display:none;z-index:20}.toast.show{display:block}.hidden{display:none!important}.auth-gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.auth-card{width:min(430px,100%);background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;box-shadow:var(--shadow)}.auth-card h1{margin-bottom:4px}.auth-status{margin-top:10px;padding:10px;border-radius:8px;background:#f4f6f8;font-size:13px}.auth-status.error{background:#fdebea;color:var(--bad)}
 @media(max-width:700px){.sync-badge{flex-basis:100%;text-align:right}.status-text{flex-basis:100%;text-align:right;white-space:normal;max-width:none}main{padding:12px}.grid.two,.grid.three{grid-template-columns:1fr}.att-row{grid-template-columns:1fr}.att-buttons button{flex:1}.att-buttons{width:100%}header{align-items:flex-start}.header-actions{justify-content:flex-end}}
+.demo-banner{background:#e0a93b;color:#1b1b1b;padding:8px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;font-weight:600}.demo-banner button{background:#1b1b1b;color:#fff;border:0;border-radius:7px;padding:6px 10px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -89,8 +90,9 @@ dialog{border:0;border-radius:13px;padding:0;width:min(560px,calc(100% - 24px));
   </div>
 </div>
 <div id="app" class="app hidden">
+<div id="demoBanner" class="demo-banner hidden"><span>DEMO MODE: this is a copy of the real data. Use anything you like, nothing is saved and it all resets when you reload.</span><button onclick="location.reload()">Reset now</button></div>
 <header>
-  <div class="brand">Alkawn Hub <small>Attendance &amp; Payments · v2026-10-14</small></div>
+  <div class="brand">Alkawn Hub <small>Attendance &amp; Payments · v2026-10-26-demo</small></div>
   <div class="header-actions">
     <span id="syncBadge" class="sync-badge"></span>
     <span id="statusText" class="status-text" aria-live="polite"></span>
@@ -192,6 +194,12 @@ dialog{border:0;border-radius:13px;padding:0;width:min(560px,calc(100% - 24px));
 const SUPABASE_URL="https://genmsinngzjhkyjpirbe.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY="sb_publishable_puVTHYz26khc6F8_kSp2kA_-7Ikb-e8";
 const supabaseClient=supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+// ===== DEMO MODE =====
+// Accounts listed here get a sandbox: they see the owner's real data and can use every function,
+// but nothing is ever saved to the cloud or to the device. Reloading resets everything.
+// (The database also blocks writes for this account - see the SQL policy.)
+const DEMO_EMAILS=["demo@example.com"];
+let demoMode=false;
 let currentUser=null;
 let cloudReady=false;
 let cloudSaveTimer=null;
@@ -225,9 +233,11 @@ function isAuthError(e){
 function readSyncMeta(){try{return JSON.parse(localStorage.getItem(META_KEY))||null}catch{return null}}
 function readSyncBase(){try{return JSON.parse(localStorage.getItem(BASE_KEY))}catch{return null}}
 function writeSyncMeta(extra){
+ if(demoMode)return;
  try{localStorage.setItem(META_KEY,JSON.stringify(Object.assign({userId:currentUser&&currentUser.id||null,dirty:cloudDirty,version:cloudVersion,loggedOut:false},extra||{})))}catch(e){}
 }
 function persistSync(){
+ if(demoMode)return;
  writeSyncMeta();
  try{localStorage.setItem(BASE_KEY,JSON.stringify(cloudBaseData||null))}catch(e){}
 }
@@ -274,10 +284,12 @@ async function handleLoginExpired(){
  setAuthStatus("Your login expired. Log in again to sync - your changes on this device are safe and will be merged.",true);
 }
 function save(){
+ if(demoMode)return; // demo: changes live in memory only
  localStorage.setItem(KEY,JSON.stringify(db));
  if(cloudReady)scheduleCloudSave();
 }
 function scheduleCloudSave(){
+ if(demoMode)return;
  cloudDirty=true;cloudChangeSeq++;
  writeSyncMeta();
  clearTimeout(cloudSaveTimer);
@@ -339,6 +351,7 @@ function mergeThreeWay(base,local,remote,conflicts=[]){
  return cloneData(remote);
 }
 async function saveCloudData(){
+ if(demoMode)return;
  if(!cloudReady||!currentUser||cloudConflict)return;
  if(cloudSaving){cloudSaveQueued=true;return}
  cloudSaving=true;
@@ -476,6 +489,14 @@ async function signUp(){
  if(data.session){setAuthStatus("Account created. Loading Alkawn Hub...")}else setAuthStatus("Account created. Check your email to confirm your account, then log in.");
 }
 async function signOut(){
+ if(demoMode){
+   demoMode=false;
+   db={students:[],classes:[],attendance:[],programs:[]};
+   $("demoBanner").classList.add("hidden");
+   await supabaseClient.auth.signOut();
+   cloudReady=false;currentUser=null;cloudVersion=null;showAuth();setAuthStatus("You have been logged out.");
+   return;
+ }
  writeSyncMeta({loggedOut:true});
  await supabaseClient.auth.signOut(navigator.onLine===false?{scope:"local"}:undefined);
  cloudReady=false;currentUser=null;cloudVersion=null;showAuth();setAuthStatus("You have been logged out.");
@@ -491,8 +512,31 @@ function startOfflineMode(){
  renderAll();
  goOffline();
 }
+async function initDemoUser(user){
+ demoMode=true;cloudReady=false;cloudDirty=false;
+ clearTimeout(cloudSaveTimer);clearTimeout(cloudRetryTimer);
+ try{
+   // The database only lets this account read the owner's row, so this returns the owner's data.
+   const {data,error}=await supabaseClient.from("alkawn_data").select("data").neq("user_id",user.id).limit(1).maybeSingle();
+   if(error)throw error;
+   if(!data||!data.data)throw new Error("No data is shared with this demo account yet.");
+   db=cloneData(data.data);
+   migrateData();
+   showApp();
+   $("demoBanner").classList.remove("hidden");
+   renderAll();
+   toast("Demo mode: use anything, nothing is saved");
+ }catch(e){
+   console.error("Demo load error:",e);
+   demoMode=false;
+   db={students:[],classes:[],attendance:[],programs:[]};
+   setAuthStatus("Could not load the demo data: "+(e.message||e),true);
+   await supabaseClient.auth.signOut();
+ }
+}
 async function initializeCloudUser(user){
  currentUser=user;
+ if(DEMO_EMAILS.includes(String(user.email||"").toLowerCase())){await initDemoUser(user);return}
  setAuthStatus("Loading your Alkawn data...");
  const meta=readSyncMeta();
  const sameUser=!!(meta&&meta.userId===user.id);
@@ -1389,6 +1433,7 @@ async function backupNow(forcePick){
  }
 }
 async function autoBackup(){
+ if(demoMode)return;
  try{
    if(!window.showSaveFilePicker)return;
    const h=await getBackupHandle();
@@ -1403,6 +1448,7 @@ async function autoBackup(){
  }catch(e){console.error("Automatic backup skipped:",e)}
 }
 function scheduleAutoBackup(){
+ if(demoMode)return;
  clearTimeout(autoBackupTimer);
  autoBackupTimer=setTimeout(autoBackup,30000); // 30 seconds after your last change
 }
@@ -1420,6 +1466,7 @@ function importData(e){
  reader.readAsText(f);e.target.value="";
 }
 async function restoreFromBackup(x){
+ if(demoMode){db=x;migrateData();renderAll();toast("Demo mode: restored in memory only, nothing was saved");return}
  const prev=db;
  try{
    clearTimeout(cloudSaveTimer);cloudSaveQueued=false;
