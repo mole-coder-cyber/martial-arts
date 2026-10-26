@@ -1,10 +1,10 @@
-// Alkawn Hub service worker
+// Martial Arts App service worker
 // - Online: always loads the newest app from the network first, so updates arrive straight away.
 // - Offline: opens the last saved copy of the app, so you can keep working without signal.
 // - Keeps a copy of the Supabase library so the app can start offline.
 // - Never touches Supabase requests and never stores saves (POST/PATCH).
-const SHELL="alkawn-shell-v3";
-const LIB="alkawn-lib-v1";
+const SHELL="martialarts-shell-v1";
+const LIB="martialarts-lib-v1";
 const LIB_URL="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
 
 self.addEventListener("install",e=>{

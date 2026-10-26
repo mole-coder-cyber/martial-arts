@@ -1,4 +1,4 @@
-# Alkawn Hub – Attendance
+# Martial Arts App – Attendance
 
 A single-page web app for running classes: attendance, students, classes, programs and labels, and attendance history. It works on a laptop or phone, keeps working without a signal, and keeps every device in step through a Supabase cloud database.
 

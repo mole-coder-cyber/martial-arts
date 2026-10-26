@@ -7,7 +7,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>Alkawn Hub — Attendance</title>
+<title>Martial Arts App — Attendance</title>
 <style>
 :root{--bg:#f4f6f8;--card:#fff;--text:#18212b;--muted:#66717d;--line:#dfe4e8;--accent:#315f78;--good:#18794e;--bad:#b42318;--warn:#9a6700;--shadow:0 2px 12px #0000000d}
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
@@ -75,7 +75,7 @@ dialog{border:0;border-radius:13px;padding:0;width:min(560px,calc(100% - 24px));
 <body>
 <div id="authGate" class="auth-gate">
   <div class="auth-card">
-    <h1>Alkawn Hub</h1>
+    <h1>Martial Arts App</h1>
     <div class="muted" style="margin-bottom:16px">Sign in to access your cloud attendance data.</div>
     <label>Email</label>
     <input id="authEmail" type="email" autocomplete="email" placeholder="Email address">
@@ -92,7 +92,7 @@ dialog{border:0;border-radius:13px;padding:0;width:min(560px,calc(100% - 24px));
 <div id="app" class="app hidden">
 <div id="demoBanner" class="demo-banner hidden"><span>DEMO MODE: this is a copy of the real data. Use anything you like, nothing is saved and it all resets when you reload.</span><button onclick="location.reload()">Reset now</button></div>
 <header>
-  <div class="brand">Alkawn Hub <small>Attendance &amp; Payments · v2026-10-26-demo</small></div>
+  <div class="brand">Martial Arts App <small>Attendance &amp; Payments · v2026-10-26-ma</small></div>
   <div class="header-actions">
     <span id="syncBadge" class="sync-badge"></span>
     <span id="statusText" class="status-text" aria-live="polite"></span>
@@ -486,7 +486,7 @@ async function signUp(){
  setAuthStatus("Creating account...");
  const {data,error}=await supabaseClient.auth.signUp({email,password});
  if(error){setAuthStatus(error.message,true);return}
- if(data.session){setAuthStatus("Account created. Loading Alkawn Hub...")}else setAuthStatus("Account created. Check your email to confirm your account, then log in.");
+ if(data.session){setAuthStatus("Account created. Loading Martial Arts App...")}else setAuthStatus("Account created. Check your email to confirm your account, then log in.");
 }
 async function signOut(){
  if(demoMode){
@@ -537,7 +537,7 @@ async function initDemoUser(user){
 async function initializeCloudUser(user){
  currentUser=user;
  if(DEMO_EMAILS.includes(String(user.email||"").toLowerCase())){await initDemoUser(user);return}
- setAuthStatus("Loading your Alkawn data...");
+ setAuthStatus("Loading your data...");
  const meta=readSyncMeta();
  const sameUser=!!(meta&&meta.userId===user.id);
  try{
@@ -569,7 +569,7 @@ async function initializeCloudUser(user){
      }else toast("Cloud data loaded");
    }else{
      migrateData();
-     const useLocal=hasAlkawnData(db)?confirm("No cloud data exists for this account. Upload the Alkawn data currently on this device to the cloud?"):true;
+     const useLocal=hasAlkawnData(db)?confirm("No cloud data exists for this account. Upload the data currently on this device to the cloud?"):true;
      if(useLocal){
        cloudReady=true;
        cloudBaseData=null;
@@ -582,13 +582,13 @@ async function initializeCloudUser(user){
      }
      showApp();
      populateSelectors();populateStudentFilters();renderAttendance();renderStudents();renderProgramsLabels();renderClasses();
-     toast("Alkawn Hub is now connected to the cloud");
+     toast("Martial Arts App is now connected to the cloud");
    }
  }catch(e){
    console.error(e);
    if(isNetworkError(e)&&sameUser&&hasAlkawnData(db)){startOfflineMode();return}
    cloudReady=false;
-   setAuthStatus("Could not load Alkawn data: "+(e.message||e),true);
+   setAuthStatus("Could not load data: "+(e.message||e),true);
    await supabaseClient.auth.signOut();
  }
 }
@@ -1371,9 +1371,9 @@ function renderHistory(){
 }
 
 function exportData(){
- let blob=new Blob([JSON.stringify(db,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="alkawn-attendance-backup-"+today()+".json";a.click();URL.revokeObjectURL(a.href);toast("Backup downloaded")}
+ let blob=new Blob([JSON.stringify(db,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="martial-arts-backup-"+today()+".json";a.click();URL.revokeObjectURL(a.href);toast("Backup downloaded")}
 // ===== One-file backup: Chrome/Edge keep overwriting the same file; other browsers download a normal file =====
-const BACKUP_FILE_NAME="Alkawn-Hub-backup.json";
+const BACKUP_FILE_NAME="Martial-Arts-App-backup.json";
 let backupHandle=null,autoBackupTimer=null,autoBackupWarned=false;
 function backupCounts(x){
  const a=(x&&Array.isArray(x.attendance))?x.attendance:[];
@@ -1407,7 +1407,7 @@ async function backupNow(forcePick){
      if(perm!=="granted")h=null;
    }
    if(!h){
-     h=await window.showSaveFilePicker({suggestedName:BACKUP_FILE_NAME,types:[{description:"Alkawn Hub backup",accept:{"application/json":[".json"]}}]});
+     h=await window.showSaveFilePicker({suggestedName:BACKUP_FILE_NAME,types:[{description:"Martial Arts App backup",accept:{"application/json":[".json"]}}]});
      backupHandle=h;
      await idbSet("handle",h);
    }
@@ -1458,7 +1458,7 @@ function importData(e){
  reader.onload=async()=>{
    let x;
    try{x=JSON.parse(reader.result);if(!Array.isArray(x.students)||!Array.isArray(x.classes)||!Array.isArray(x.attendance))throw Error()}
-   catch{alert("That file does not look like an Alkawn Attendance backup.");return}
+   catch{alert("That file does not look like a Martial Arts App backup.");return}
    const n=backupCounts(x),c=backupCounts(db);
    if(!confirm("Restore this backup?\n\nBackup file: "+n.students+" students, "+n.classes+" classes, "+n.sessions+" attendance sessions\nCurrently in the app: "+c.students+" students, "+c.classes+" classes, "+c.sessions+" attendance sessions\n\nThis REPLACES the data in the cloud and on every device with the backup."))return;
    await restoreFromBackup(x);
@@ -1502,7 +1502,7 @@ function updateInstallUI(){
 }
 function instStepDone(id,text){const e=$(id);if(e)e.innerHTML=`<span class="inst-ok">✓</span> ${text}`}
 function showInstallProgress(){
- openModal(`<h2 id="instTitle">Installing Alkawn Hub…</h2>
+ openModal(`<h2 id="instTitle">Installing Martial Arts App…</h2>
  <div class="inst-step" id="instStep1"><span class="spinner"></span> Installing the app on this device</div>
  <div class="inst-step" id="instStep2"><span class="spinner"></span> Saving a copy for offline use</div>
  <div class="indet" id="instBar"><div></div></div>
@@ -1514,8 +1514,8 @@ function showInstallProgress(){
 }
 function finishInstall(){
  installing=false;deferredInstall=null;clearTimeout(window.__instTimer);
- const t=$("instTitle");if(t){t.textContent="Alkawn Hub is installed ✓";instStepDone("instStep1","App installed");instStepDone("instStep2","Offline copy saved");const b=$("instBar");if(b)b.style.display="none";const n=$("instNote");if(n)n.textContent="Find Alkawn Hub on your home screen or in your app list.";}
- updateInstallUI();toast("Alkawn Hub installed");
+ const t=$("instTitle");if(t){t.textContent="Martial Arts App is installed ✓";instStepDone("instStep1","App installed");instStepDone("instStep2","Offline copy saved");const b=$("instBar");if(b)b.style.display="none";const n=$("instNote");if(n)n.textContent="Find Martial Arts App on your home screen or in your app list.";}
+ updateInstallUI();toast("Martial Arts App installed");
 }
 async function installApp(){
  if(installing)return;
@@ -1532,7 +1532,7 @@ async function installApp(){
    return;
  }
  if(isIOSDevice()){
-   openModal(`<h2>Install on iPhone or iPad</h2><ol style="padding-left:20px;line-height:1.7"><li>Tap the <b>Share</b> button (the square with an arrow) in Safari.</li><li>Scroll down and tap <b>Add to Home Screen</b>.</li><li>Tap <b>Add</b>. Alkawn Hub now appears on your home screen.</li></ol><div class="small muted">On iPhone this is instant — nothing is downloaded.</div><div class="actions" style="margin-top:14px;justify-content:flex-end"><button class="btn primary" onclick="closeModal()">Got it</button></div>`);
+   openModal(`<h2>Install on iPhone or iPad</h2><ol style="padding-left:20px;line-height:1.7"><li>Tap the <b>Share</b> button (the square with an arrow) in Safari.</li><li>Scroll down and tap <b>Add to Home Screen</b>.</li><li>Tap <b>Add</b>. Martial Arts App now appears on your home screen.</li></ol><div class="small muted">On iPhone this is instant — nothing is downloaded.</div><div class="actions" style="margin-top:14px;justify-content:flex-end"><button class="btn primary" onclick="closeModal()">Got it</button></div>`);
  }
 }
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredInstall=e;updateInstallUI()});
@@ -1694,7 +1694,7 @@ function whatsappReminder(rid){
  const r=recById(rid),st=statement(rid,payMonth());
  if(!r.phone){alert("Add a WhatsApp number for this recipient first (Edit).");return}
  let p=r.phone.replace(/[^\d]/g,"");if(p.startsWith("0"))p="27"+p.slice(1);
- const msg=`Hi ${r.name}, a friendly reminder that ${R(st.balance)} is outstanding for Alkawn. Please use reference ${r.ref} when paying. Thank you!`;
+ const msg=`Hi ${r.name}, a friendly reminder that ${R(st.balance)} is outstanding for martial arts classes. Please use reference ${r.ref} when paying. Thank you!`;
  window.open("https://wa.me/"+p+"?text="+encodeURIComponent(msg),"_blank");
 }
 

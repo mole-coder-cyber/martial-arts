@@ -1,4 +1,4 @@
-ALKAWN HUB — ATTENDANCE V1
+MARTIAL ARTS APP — ATTENDANCE V1
 
 Files:
 - index.html: the complete app
@@ -17,6 +17,6 @@ How to use:
 
 Important:
 - This version stores data in the browser's local storage.
-- It is intended as the first attendance-only stage, not yet the full Alkawn Hub.
+- It is intended as the first attendance-only stage, not yet the full app.
 - The data model deliberately keeps recurring class membership separate from attendance history.
 - Temporary students are recorded for one session only.
