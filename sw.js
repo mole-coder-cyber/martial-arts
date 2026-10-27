@@ -3,7 +3,7 @@
 // - Offline: opens the last saved copy of the app, so you can keep working without signal.
 // - Keeps a copy of the Supabase library so the app can start offline.
 // - Never touches Supabase requests and never stores saves (POST/PATCH).
-const SHELL="martialarts-shell-v1";
+const SHELL="martialarts-shell-v2";
 const LIB="martialarts-lib-v1";
 const LIB_URL="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
 
