@@ -42,12 +42,12 @@ A single-page web app for running classes: attendance, students, classes, progra
 - **Next payment due**: set on each student (past or future dates both work). Recording a payment suggests the next date, end of next month for end-of-month payers, and the Payments tab shows overdue days.
 - **Drop-in rates**: Payments → Drop-in rates. Create your own rates (name + amount); nothing is hardcoded.
 - **Payment at class**: when adding a temporary student, pick a rate and Cash/EFT/Not paid yet. The button on their attendance row (and on per-class students) edits it later. Unpaid drop-ins appear under "Drop-ins owing".
-- **Mark payment button**: on every attendance row (hidden for students marked absent, who cannot be paid for) and in the Payments tab (top button, each statement, each amount owing). One screen records who is paying, and either or both of: a payment for this class (Paid, Not paid yet, or Free — no charge) and a monthly payment for any month (buttons for this month and next month). Paying for a class today and next month in one go is done here.
-- **Free lessons**: choose "Free — no charge" (with an optional reason). The lesson still counts as attended but is never charged, including on per-class and shared-class statements.
+- **Mark payment** (one button at the top of the Attendance tab and one on the Payments tab): pick who is paying, how much, and what it is for. What it can be for depends on the payer's arrangement: what they are expected to pay (monthly for any month, or per class for a chosen lesson), a drop-in class (pick a drop-in rate and the lesson), a free lesson (no charge, optional reason; counts as attended but is never charged), or something else (a note, such as a grading fee; it never reduces a month's statement). A new student who paid a drop-in and the whole of next month is two marks: one for the month, one for the lesson.
+- Students marked absent can't be paid for: they are left out of the lesson lists, and a student with a payment on a lesson can't be marked absent until it is removed (Mark payment → pick the same lesson → Remove existing mark).
+- **Statements**: tap a family, then **Mark payment** on the statement for the usual monthly payment screen. Tap a student's row in the top table to see only that student's attendance.
 - **Temporary students**: when adding one you can leave payment unmarked, mark it paid (Cash/EFT/Other) or mark it as owing. A temporary student who has paid is also marked Present.
 - **Present / Absent**: tap the selected button again to clear it and leave the student unmarked. A student with a payment marked for the lesson cannot be marked absent until that payment is cleared.
 - **Payments search**: the box at the top finds a family by name, reference or any of its students' names, and shows which tab the matches are in.
-- **Statements**: tap a student's row in the top table to see only that student's attendance below.
 - **Rates** are listed most expensive first (rate popups and the rate drop-downs).
 - **WhatsApp reminder**: opens WhatsApp with a ready message; you tap Send. Nothing is sent automatically.
 

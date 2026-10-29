@@ -53,7 +53,10 @@ input.input-error{border-color:#d92d20;background:#fff5f4;box-shadow:0 0 0 3px #
 .cal-d.paused{background:repeating-linear-gradient(45deg,#f1f3f5,#f1f3f5 6px,#e8ebee 6px,#e8ebee 12px);color:#7a8590}
 .cal-d.click{cursor:pointer}
 .cal-d.today{outline:2px solid var(--accent);outline-offset:-2px}
-.cal-note{position:absolute;right:4px;top:2px;font-style:normal;font-size:12px}
+.cal-note{position:absolute;right:6px;top:6px;width:20px;height:20px;border-radius:50%;background:#2563eb;color:#fff;font-style:normal;font-size:12px;line-height:20px;text-align:center;box-shadow:0 0 0 0 rgba(37,99,235,.6);animation:notePulse 1.6s ease-out infinite}
+@keyframes notePulse{0%{box-shadow:0 0 0 0 rgba(37,99,235,.6);transform:scale(1)}60%{box-shadow:0 0 0 6px rgba(37,99,235,0);transform:scale(1.12)}100%{box-shadow:0 0 0 0 rgba(37,99,235,0);transform:scale(1)}}
+.cal-note-key{display:inline-block;width:18px;height:18px;border-radius:50%;background:#2563eb;color:#fff;font-size:11px;line-height:18px;text-align:center;margin-right:5px;vertical-align:-3px}
+@media(prefers-reduced-motion:reduce){.cal-note{animation:none}}
 .cal-legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;font-size:12px;color:#59636e}
 .cal-legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-2px;border:1px solid #aab3bc}
 .sync-badge{display:none;align-self:center;font-size:12px;color:#e0a93b;margin-right:4px}header button{background:#ffffff16;color:#fff;border:1px solid #ffffff30;border-radius:8px;padding:8px 11px}
@@ -120,7 +123,7 @@ dialog{border:0;border-radius:13px;padding:0;width:min(560px,calc(100% - 24px));
   <section id="attendance" class="view active">
     <div class="row" style="margin-bottom:14px">
       <div><h1>Take Attendance</h1><div class="muted">Choose a class and date, then mark each student.</div></div>
-      <button class="btn primary" onclick="openQuickSession()">Open Today</button>
+      <div class="actions"><button class="btn" onclick="openQuickSession()">Open Today</button><button class="btn primary" onclick="openMarkPay(attendanceCtx())">Mark payment</button></div>
     </div>
     <div class="card">
       <div class="grid two">
@@ -171,8 +174,9 @@ dialog{border:0;border-radius:13px;padding:0;width:min(560px,calc(100% - 24px));
   </section>
 
   <section id="payments" class="view">
-    <div class="row" style="margin-bottom:14px"><div><h1>Payments</h1><div class="muted">Who owes what for the month. Tap a family to see the statement.</div></div><div class="actions"><button class="btn primary" onclick="openMarkPay({})">Mark payment</button><button class="btn" onclick="openRates('dropRates')">Drop-in rates</button><button class="btn" onclick="openRates('classRates')">Class rates</button><input id="payMonth" type="month" class="month-input" onchange="renderPayments()"></div></div>
-    <div class="card" style="margin-bottom:12px"><label style="margin-top:0">Find a payment</label><input id="paySearch" placeholder="Search by student, family or reference..." oninput="renderPayments()"></div>
+    <div class="row" style="margin-bottom:14px"><div><h1>Payments</h1><div class="muted">Who owes what for the month. Tap a family to see the statement and mark a payment.</div></div><div class="actions"><button class="btn primary" onclick="openMarkPay({})">Mark payment</button><button class="btn" onclick="openRates('dropRates')">Drop-in rates</button><button class="btn" onclick="openRates('classRates')">Class rates</button><input id="payMonth" type="month" class="month-input" onchange="renderPayments()"></div></div>
+    <div id="payStats"></div>
+    <div style="margin-bottom:10px"><input id="paySearch" placeholder="Search by student, family or reference..." oninput="renderPayments()"></div>
     <div id="payArea"></div>
   </section>
 
@@ -870,22 +874,26 @@ function renderAttendance(){
  ${cancelled?`<div class="card empty" style="margin-top:12px">This lesson is cancelled. No attendance can be marked.</div>`:`<div class="list" style="margin-top:12px">${r.records.map(a=>attendanceRow(a,c.id,date,future,simple)).join("")}</div>`}`;
  populateSelectors(); // keeps the green "done" marks and the "classes left" note up to date
 }
+function payTxt(a){
+ if(a.free)return "Free — no charge";
+ if(a.fee)return a.fee.method==="Unpaid"?"Owes "+R(a.fee.amount):"Paid "+R(a.fee.amount)+" · "+a.fee.method;
+ return "";
+}
 function attendanceRow(a,classId,date,future=false,simple=false){
  let s=db.students.find(x=>x.id===a.studentId);
  let name=s?esc(s.name):esc(a.name||"Temporary student");
- const freeTxt=a.free?" · Free — no charge":"";
+ const pt=payTxt(a),extra=pt?" · "+esc(pt):"";
  if(simple){
    const done=db.attendance.find(r=>r.classId===classId&&r.date===date)?.status==="completed";
-   return `<div class="att-row"><div class="att-main"><div class="att-name">${name}</div><div class="att-meta">${(future?"Future lesson":done?(a.status==="absent"?"Marked absent earlier":"Lesson completed"):"Not completed yet")+freeTxt}</div></div><div class="att-buttons">${payBtn(a,classId,date,s)}</div></div>`;
+   return `<div class="att-row"><div class="att-main"><div class="att-name">${name}</div><div class="att-meta">${(future?"Future lesson":done?(a.status==="absent"?"Marked absent earlier":"Lesson completed"):"Not completed yet")+extra}</div></div></div>`;
  }
  let disabled=(future||db.attendance.find(r=>r.classId===classId&&r.date===date)?.status==="completed")?"disabled":"";
  return `<div class="att-row">
- <div class="att-main"><div class="att-name">${name} ${a.temporary?'<span class="badge pending">Temporary</span>':""}</div><div class="att-meta">${(a.status==="absent"&&a.reason?esc(a.reason):a.status?esc(a.status):future?"Future lesson":"Not marked")+freeTxt}</div></div>
+ <div class="att-main"><div class="att-name">${name} ${a.temporary?'<span class="badge pending">Temporary</span>':""}</div><div class="att-meta">${(a.status==="absent"&&a.reason?esc(a.reason):a.status?esc(a.status):future?"Future lesson":"Not marked")+extra}</div></div>
  <div class="att-buttons">
  <button ${disabled} class="${a.status==="present"?"selected-present":""}" onclick="setAttendance('${classId}','${date}','${a.studentId||""}','present')">Present</button>
  <button ${disabled} class="${a.status==="absent"?"selected-absent":""}" onclick="setAttendance('${classId}','${date}','${a.studentId||""}','absent')">Absent</button>
  ${!future&&a.status==="absent"?`<button ${disabled} onclick="editReason('${classId}','${date}','${a.studentId||""}')">Reason</button>`:""}
- ${payBtn(a,classId,date,s)}
  ${a.temporary?`<button ${disabled} onclick="confirmRemoveTemporary('${classId}','${date}','${a.studentId}')">Remove</button>`:""}
  </div></div>`
 }
@@ -1383,7 +1391,7 @@ function renderHistoryMonth(){
  const summary=[held&&`${held} held`,cancelled&&`${cancelled} cancelled`,open&&`${open} not marked`].filter(Boolean).join(" · ")||"No lessons recorded this month";
  $("historyArea").innerHTML=`<div class="card"><div class="row"><div><h2>${esc(c.name)}</h2><div class="muted">${summary}</div></div><div class="actions" style="align-items:center"><button class="btn" onclick="shiftHistoryMonth(-1)" title="Previous month">‹</button><b>${esc(monthName)}</b><button class="btn" onclick="shiftHistoryMonth(1)" title="Next month">›</button></div></div>
  <div class="cal">${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(x=>`<div class="cal-h">${x}</div>`).join("")}${cells}</div>
- <div class="cal-legend"><span><i style="background:#e3f4ea;border-color:#18794e"></i>Held</span><span><i style="background:#fdebea;border-color:#c0392b"></i>Cancelled</span><span><i style="background:#fff4d6;border-color:#e0a93b"></i>Not marked</span><span><i style="background:#fff;border-style:dashed"></i>Upcoming</span><span><i style="background:#e8ebee"></i>Paused</span><span>✎ has notes</span></div>
+ <div class="cal-legend"><span><i style="background:#e3f4ea;border-color:#18794e"></i>Held</span><span><i style="background:#fdebea;border-color:#c0392b"></i>Cancelled</span><span><i style="background:#fff4d6;border-color:#e0a93b"></i>Not marked</span><span><i style="background:#fff;border-style:dashed"></i>Upcoming</span><span><i style="background:#e8ebee"></i>Paused</span><span><b class="cal-note-key">✎</b>has notes</span></div>
  ${notes.length?`<h3 style="margin-top:16px">Notes this month</h3><div class="list" style="margin-top:6px">${notes.map(n=>`<div class="list-item"><b>${esc(fmtClassDate(n.date))}</b><div class="small" style="margin-top:3px">${esc(n.text)}</div></div>`).join("")}</div>`:""}</div>`;
 }
 function historyDayDetails(cid,date){
@@ -1621,7 +1629,7 @@ function payFieldsRead(studentName){
  const rate=db.classRates.find(x=>x.id===rv),mode=$("sDueMode").value;
  return {recipientId:rid,timing:$("sTiming").value,pricing:$("sPricing").value,sharedLesson:$("sPricing").value==="perclass"&&$("sShared").checked,fee:custom?parseFloat($("sFee").value):rate?rate.amount:"",rateName:custom?"Custom":rate?rate.name:"",feeNote:custom?$("sFeeNote").value.trim():"",dueMode:mode,nextDue:mode==="date"&&!per?$("sNextDue").value:""};
 }
-function lastPayment(rid){return db.payments.filter(p=>p.recipientId===rid).sort((a,b)=>String(b.month||"").localeCompare(String(a.month||""))||b.date.localeCompare(a.date))[0]}
+function lastPayment(rid){return db.payments.filter(p=>p.recipientId===rid&&p.kind!=="other").sort((a,b)=>String(b.month||"").localeCompare(String(a.month||""))||b.date.localeCompare(a.date))[0]}
 function nextDueOf(s){
  const timing=s.timing||"advance";if(timing==="perclass")return "";
  const mode=s.dueMode||(s.nextDue?"date":"auto");
@@ -1658,7 +1666,7 @@ function statement(rid,month){
  if(sh.length){const keys=new Set();db.attendance.forEach(r=>{if(!r.date.startsWith(month)||r.cancelled)return;if(r.records.some(a=>a.status==="present"&&!a.free&&sh.some(l=>l.s.id===a.studentId)))keys.add((r.classId||r.className||"")+"|"+r.date)});sharedCount=keys.size;sharedRate=Number(sh[0].s.fee)||0;sharedAmount=sharedCount*sharedRate}
  const sharedTracked=sh.some(l=>l.tracked);
  const due=lines.filter(l=>l.tracked).reduce((t,l)=>t+l.amount,0)+(sharedTracked?sharedAmount:0),perclass=lines.filter(l=>!l.tracked).reduce((t,l)=>t+l.amount,0)+(sharedTracked?0:sharedAmount);
- const pays=db.payments.filter(p=>p.recipientId===rid&&p.month===month).sort((a,b)=>a.date.localeCompare(b.date));
+ const pays=db.payments.filter(p=>p.recipientId===rid&&p.month===month&&p.kind!=="other").sort((a,b)=>a.date.localeCompare(b.date));
  const paid=pays.reduce((t,p)=>t+Number(p.amount),0);
  const dues=lines.filter(l=>l.tracked).map(l=>nextDueOf(l.s)).filter(Boolean).sort(),nextDue=dues[0]||"";
  const urgent=nextDue?nextDue<=today():(lines.some(l=>l.tracked&&l.timing==="advance")||month<monthNow());
@@ -1690,25 +1698,32 @@ function renderPayments(){
  const diOwe=di.filter(x=>x.a.fee.method==="Unpaid"),diPaid=di.filter(x=>x.a.fee.method!=="Unpaid");
  const now=owing.filter(x=>x.st.urgent&&famOk(x)),soon=owing.filter(x=>!x.st.urgent&&famOk(x)),paid=settled.filter(famOk);
  const nowDi=diOwe.filter(diOk),paidDi=diPaid.filter(diOk);
- const hist=db.payments.filter(p=>p.month===m).filter(p=>{const r=recById(p.recipientId);return famOk({r:r||{id:p.recipientId,name:"",ref:""},st:statement(p.recipientId,m)})}).sort((a,b)=>b.date.localeCompare(a.date));
+ const histOk=p=>{
+   const r=recById(p.recipientId),textHit=!!q&&normName([p.payer,p.reason].join(" ")).includes(q);
+   if(!r)return (sub==="all"||sub==="dropins")&&(!q||textHit);
+   return (sub==="all"||(sub!=="dropins"&&famKinds(statement(r.id,m)).has(sub)))&&(recMatch(r)||textHit);
+ };
+ const hist=db.payments.filter(p=>p.month===m&&histOk(p)).sort((a,b)=>b.date.localeCompare(a.date));
  const owed=owing.reduce((t,x)=>t+x.st.balance,0)+diOwe.reduce((t,x)=>t+x.a.fee.amount,0);
  const got=db.payments.filter(p=>p.month===m).reduce((t,p)=>t+Number(p.amount),0)+diPaid.reduce((t,x)=>t+x.a.fee.amount,0);
- const famRow=x=>`<div class="list-item clickable" onclick="openStatement('${x.r.id}','')"><div class="row"><div style="min-width:0"><b>${esc(x.r.name)}</b><div class="small muted">${esc(x.r.ref)}${x.st.nextDue?" · "+dueTag(x.st.nextDue):""}</div>${x.st.lines.filter(l=>l.tracked).map(l=>`<div class="small" style="margin-top:3px">${esc(l.s.name)} <span class="badge pending">${l.pricing==="perclass"?"Per class":"Monthly"}</span> <span class="muted">${esc(rateLabel(l.s))}</span></div>`).join("")}</div><div style="text-align:right"><b>${R(tab==="paid"?x.st.paid:x.st.balance)}</b>${tab!=="paid"&&x.st.paid?`<div class="small muted">${R(x.st.paid)} paid</div>`:""}<button class="btn" style="margin-top:6px" onclick="event.stopPropagation();openMarkPay({rid:'${x.r.id}'})">Mark payment</button></div></div></div>`;
- const diRow=x=>`<div class="list-item clickable" onclick="openMarkPay({classId:'${x.r.classId}',date:'${x.r.date}',studentId:'${x.a.studentId}'})"><div class="row"><div><b>${esc(x.name)}</b> <span class="badge pending">${x.a.temporary?"Drop-in":"Paid at class"}</span><div class="small muted">${esc(cls(x))} · ${fmt(x.r.date)} · ${esc(x.a.fee.rate||"Custom")}${x.a.fee.method!=="Unpaid"?" · "+esc(x.a.fee.method):""}${x.a.fee.payer&&normName(x.a.fee.payer)!==normName(x.name)?" · paid by "+esc(x.a.fee.payer):""}</div></div><div style="text-align:right"><b>${R(x.a.fee.amount)}</b>${x.a.fee.method==="Unpaid"?`<div><button class="btn" style="margin-top:6px" onclick="event.stopPropagation();openMarkPay({classId:'${x.r.classId}',date:'${x.r.date}',studentId:'${x.a.studentId}'})">Mark payment</button></div>`:""}</div></div></div>`;
- const histRow=p=>`<div class="list-item"><div class="row"><div><b>${esc((recById(p.recipientId)||{}).name||"Recipient")}</b><div class="small muted">${fmt(p.date)} · ${esc(p.method)}</div></div><b>${R(p.amount)}</b></div></div>`;
+ const famRow=x=>`<div class="list-item clickable" onclick="openStatement('${x.r.id}','')"><div class="row"><div style="min-width:0"><b>${esc(x.r.name)}</b><div class="small muted">${esc(x.r.ref)}${x.st.nextDue?" · "+dueTag(x.st.nextDue):""}</div>${x.st.lines.filter(l=>l.tracked).map(l=>`<div class="small" style="margin-top:3px">${esc(l.s.name)} <span class="badge pending">${l.pricing==="perclass"?"Per class":"Monthly"}</span> <span class="muted">${esc(rateLabel(l.s))}</span></div>`).join("")}</div><div style="text-align:right"><b>${R(tab==="paid"?x.st.paid:x.st.balance)}</b>${tab!=="paid"&&x.st.paid?`<div class="small muted">${R(x.st.paid)} paid</div>`:""}</div></div></div>`;
+ const diRow=x=>`<div class="list-item clickable" onclick="editDropIn('${x.r.classId}','${x.r.date}','${x.a.studentId}',true)"><div class="row"><div><b>${esc(x.name)}</b> <span class="badge pending">${x.a.temporary?"Drop-in":"Paid at class"}</span><div class="small muted">${esc(cls(x))} · ${fmt(x.r.date)} · ${esc(x.a.fee.rate||"Custom")}${x.a.fee.method!=="Unpaid"?" · "+esc(x.a.fee.method):""}${x.a.fee.payer&&normName(x.a.fee.payer)!==normName(x.name)?" · paid by "+esc(x.a.fee.payer):""}</div></div><b>${R(x.a.fee.amount)}</b></div></div>`;
+ const histRow=p=>`<div class="list-item"><div class="row"><div><b>${esc((recById(p.recipientId)||{}).name||p.payer||"Payer")}</b><div class="small muted">${fmt(p.date)} · ${esc(p.method)}${p.kind==="other"?" · Other: "+esc(p.reason||""):""}</div></div><div><b>${R(p.amount)}</b>${p.kind==="other"?` <button class="btn danger" onclick="deleteOtherPayment('${p.id}')">✕</button>`:""}</div></div></div>`;
  const sect=(t,a)=>a.length?`<h3 style="margin:14px 0 8px">${t}</h3><div class="list">${a.join("")}</div>`:"";
- const counts={now:now.length+nowDi.length,soon:soon.length,paid:paid.length+paidDi.length};
+ const counts={now:now.length+nowDi.length,soon:soon.length,paid:paid.length+paidDi.length+hist.length};
  const emptyMsg=()=>{
    if(!q)return tab==="now"?"Nothing due.":tab==="soon"?"Nothing coming up.":"Nothing here yet.";
-   const others=[["now","Due now",counts.now],["soon","Due soon",counts.soon],["paid","Paid up",counts.paid+hist.length]].filter(([k,l,n])=>k!==tab&&n>0);
-   return `Nothing matches “${esc(($("paySearch")||{}).value.trim())}” in this tab.${others.length?`<div style="margin-top:10px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">${others.map(([k,l,n])=>`<button class="btn" onclick="setPayTab('${k}')">${l} (${n})</button>`).join("")}</div>`:`<div class="small" style="margin-top:6px">Try a different spelling, or check the month at the top.</div>`}`;
+   const others=[["now","Due now"],["soon","Due soon"],["paid","Paid up"]].filter(([k])=>k!==tab&&counts[k]>0);
+   return `Nothing matches “${esc(($("paySearch")||{}).value.trim())}” in this tab.${others.length?`<div style="margin-top:10px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">${others.map(([k,l])=>`<button class="btn" onclick="setPayTab('${k}')">${l} (${counts[k]})</button>`).join("")}</div>`:`<div class="small" style="margin-top:6px">Try a different spelling, or check the month at the top.</div>`}`;
  };
  const body=(tab==="now"?sect("Statements",now.sort((a,b)=>(a.st.nextDue||"9").localeCompare(b.st.nextDue||"9")||a.r.name.localeCompare(b.r.name)).map(famRow))+sect("Drop-ins owing",nowDi.map(diRow))
   :tab==="soon"?sect("Statements",soon.map(famRow))
   :sect("Settled statements",paid.map(famRow))+sect("Paid at class",paidDi.map(diRow))+sect("Payment history",hist.map(histRow)))||`<div class="card empty">${emptyMsg()}</div>`;
  const noFee=db.students.filter(s=>s.active!==false&&(!s.recipientId||s.fee===""||s.fee===undefined)).length;
  const seg=(k,l,n)=>`<button class="${tab===k?"active":""}" style="flex:1" onclick="setPayTab('${k}')">${l} (${n})</button>`;
- $("payArea").innerHTML=`<div class="grid three" style="margin-bottom:14px"><div class="card"><div class="stat">${R(owed)}</div><div class="stat-label">Outstanding</div></div><div class="card"><div class="stat">${R(got)}</div><div class="stat-label">Received</div></div><div class="card"><div class="stat">${owing.length+diOwe.length}</div><div class="stat-label">Owing</div></div></div>${noFee?`<div class="card small muted" style="margin-bottom:14px">${noFee} active student${noFee>1?"s have":" has"} no recipient or rate yet. Open the student's Payments tab to set it up.</div>`:""}<div class="seg-group" style="display:flex;margin-bottom:10px">${seg("now","Due now",now.length+nowDi.length)}${seg("soon","Due soon",soon.length)}${seg("paid","Paid up",paid.length+paidDi.length)}</div><div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px">${[["all","All"],["monthly","Monthly"],["perclass","Per class"],["dropins","Drop-ins"]].map(([k,l])=>`<button class="btn ${sub===k?"primary":""}" onclick="setPaySub('${k}')">${l}</button>`).join("")}</div>${body}`;
+ // big boxes sit right under the month bar; the search box (static, so it keeps focus while typing) sits between them and the tabs
+ if($("payStats"))$("payStats").innerHTML=`<div class="grid three" style="margin-bottom:12px"><div class="card"><div class="stat">${R(owed)}</div><div class="stat-label">Outstanding</div></div><div class="card"><div class="stat">${R(got)}</div><div class="stat-label">Received</div></div><div class="card"><div class="stat">${owing.length+diOwe.length}</div><div class="stat-label">Owing</div></div></div>${noFee?`<div class="card small muted" style="margin-bottom:12px">${noFee} active student${noFee>1?"s have":" has"} no recipient or rate yet. Open the student's Payments tab to set it up.</div>`:""}`;
+ $("payArea").innerHTML=`<div class="seg-group" style="display:flex;margin-bottom:10px">${seg("now","Due now",now.length+nowDi.length)}${seg("soon","Due soon",soon.length)}${seg("paid","Paid up",paid.length+paidDi.length)}</div><div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px">${[["all","All"],["monthly","Monthly"],["perclass","Per class"],["dropins","Drop-ins"]].map(([k,l])=>`<button class="btn ${sub===k?"primary":""}" onclick="setPaySub('${k}')">${l}</button>`).join("")}</div>${body}`;
 }
 // Attendance table for ONE student, shown under the family's statement table
 function stmtAttHtml(sid){
@@ -1728,11 +1743,11 @@ function openStatement(rid,from){
  const paidTxt=l=>!l.tracked?"At class":st.balance<=0.005?"Yes":st.paid>0?"Partly":"No";
  // which student's attendance is shown below: keep the previous choice if it still belongs to this family, otherwise the first student
  if(window._stmtSelRid!==rid||!st.lines.some(l=>l.s.id===window._stmtSel)){window._stmtSelRid=rid;window._stmtSel=(st.lines[0]||{s:{}}).s.id}
- openModal(`${window._stmtFrom?`<button class="btn" style="margin-bottom:10px" onclick="studentProfile('${window._stmtFrom}','payments')">← Student profile</button>`:""}<div class="row"><div><h2>${esc(r.name)}</h2><div class="muted">Reference <b>${esc(r.ref)}</b> · ${esc(lab)}</div></div><button class="btn" onclick="editRecipient('${rid}')">Edit</button></div><table style="margin-top:12px"><thead><tr><th>Student</th><th>Arrangement</th><th>Paid</th><th style="text-align:right">Amount</th></tr></thead><tbody>${st.lines.map(l=>`<tr class="stmt-row${l.s.id===window._stmtSel?" sel":""}" data-sid="${l.s.id}" onclick="stmtSelect('${rid}','${l.s.id}')"><td>${esc(l.s.name)}${l.s.feeNote?`<div class="small muted">${esc(l.s.feeNote)}</div>`:""}</td><td class="small">${TIMING[l.timing]}<br>${esc(rateLabel(l.s))}</td><td>${paidTxt(l)}</td><td style="text-align:right">${l.shared?'<span class="small muted">shared</span>':R(l.amount)}${l.tracked||l.shared?"":'<div class="small muted">paid per class</div>'}</td></tr>`).join("")||'<tr><td colspan="4" class="muted">No active students linked.</td></tr>'}${st.sharedCount?`<tr><td colspan="3"><b>Shared lessons</b> <span class="small muted">${st.sharedCount} × ${R(st.sharedRate)}</span></td><td style="text-align:right">${R(st.sharedAmount)}</td></tr>`:""}</tbody></table>${st.lines.length>1?`<div class="small muted" style="margin-top:6px">Tap a student's row to see their attendance below.</div>`:""}<div class="small" style="margin-top:8px;text-align:right">Total due <b>${R(st.due)}</b> · Balance <b>${R(st.balance)}</b></div><div id="stmtAtt">${stmtAttHtml(window._stmtSel)}</div>${st.pays.length?`<h3 style="margin-top:16px">Payments</h3>${st.pays.map(p=>`<div class="list-item"><div class="row"><div>${fmt(p.date)} · ${esc(p.method)}${p.reason?`<div class="small muted">${esc(p.reason)}</div>`:""}</div><div><b>${R(p.amount)}</b> <button class="btn danger" onclick="deletePayment('${p.id}','${rid}')">✕</button></div></div></div>`).join("")}`:""}<div class="actions" style="margin-top:14px;justify-content:flex-end"><button class="btn" onclick="whatsappReminder('${rid}')">WhatsApp reminder</button><button class="btn primary" onclick="closeModal();openMarkPay({rid:'${rid}'})">Mark payment</button><button class="btn" onclick="closeModal()">Close</button></div>`);
+ openModal(`${window._stmtFrom?`<button class="btn" style="margin-bottom:10px" onclick="studentProfile('${window._stmtFrom}','payments')">← Student profile</button>`:""}<div class="row"><div><h2>${esc(r.name)}</h2><div class="muted">Reference <b>${esc(r.ref)}</b> · ${esc(lab)}</div></div><button class="btn" onclick="editRecipient('${rid}')">Edit</button></div><table style="margin-top:12px"><thead><tr><th>Student</th><th>Arrangement</th><th>Paid</th><th style="text-align:right">Amount</th></tr></thead><tbody>${st.lines.map(l=>`<tr class="stmt-row${l.s.id===window._stmtSel?" sel":""}" data-sid="${l.s.id}" onclick="stmtSelect('${rid}','${l.s.id}')"><td>${esc(l.s.name)}${l.s.feeNote?`<div class="small muted">${esc(l.s.feeNote)}</div>`:""}</td><td class="small">${TIMING[l.timing]}<br>${esc(rateLabel(l.s))}</td><td>${paidTxt(l)}</td><td style="text-align:right">${l.shared?'<span class="small muted">shared</span>':R(l.amount)}${l.tracked||l.shared?"":'<div class="small muted">paid per class</div>'}</td></tr>`).join("")||'<tr><td colspan="4" class="muted">No active students linked.</td></tr>'}${st.sharedCount?`<tr><td colspan="3"><b>Shared lessons</b> <span class="small muted">${st.sharedCount} × ${R(st.sharedRate)}</span></td><td style="text-align:right">${R(st.sharedAmount)}</td></tr>`:""}</tbody></table>${st.lines.length>1?`<div class="small muted" style="margin-top:6px">Tap a student's row to see their attendance below.</div>`:""}<div class="small" style="margin-top:8px;text-align:right">Total due <b>${R(st.due)}</b> · Balance <b>${R(st.balance)}</b></div><div id="stmtAtt">${stmtAttHtml(window._stmtSel)}</div>${st.pays.length?`<h3 style="margin-top:16px">Payments</h3>${st.pays.map(p=>`<div class="list-item"><div class="row"><div>${fmt(p.date)} · ${esc(p.method)}${p.reason?`<div class="small muted">${esc(p.reason)}</div>`:""}</div><div><b>${R(p.amount)}</b> <button class="btn danger" onclick="deletePayment('${p.id}','${rid}')">✕</button></div></div></div>`).join("")}`:""}<div class="actions" style="margin-top:14px;justify-content:flex-end"><button class="btn" onclick="whatsappReminder('${rid}')">WhatsApp reminder</button><button class="btn primary" onclick="openPayment('${rid}')">Mark payment</button><button class="btn" onclick="closeModal()">Close</button></div>`);
 }
 function openPayment(rid){
  const r=recById(rid),m=payMonth(),st=statement(rid,m);
- openModal(`<h2>Record payment</h2><div class="muted">${esc(r.name)} · ${esc(r.ref)}</div><div class="grid two"><div><label>Date</label><input id="pDate" type="date" value="${today()}"></div><div><label>For month</label><input id="pMonth" type="month" value="${m}"></div></div><label>Amount (R) — expected ${R(Math.max(st.balance,0))}</label><input id="pAmount" type="number" min="0" step="any" value="${st.balance>0?st.balance:""}"><label>Method</label><select id="pMethod"><option>EFT</option><option>Cash</option><option>Other</option></select><label>Reason (required if the amount differs from the expected amount)</label><input id="pReason" placeholder="e.g. public holiday, reduced fee">${dateModeStudents(rid).length?`<label>Next payment due (for students with a chosen date)</label><input id="pNext" type="date" value="${suggestNext(rid,m)}">`:""}<div id="pErr" class="field-error" style="display:none"></div><div class="actions" style="margin-top:14px;justify-content:flex-end"><button class="btn" onclick="openStatement('${rid}')">Cancel</button><button class="btn primary" onclick="savePayment('${rid}')">Save payment</button></div>`);
+ openModal(`<h2>Mark payment</h2><div class="muted">${esc(r.name)} · ${esc(r.ref)}</div><div class="grid two"><div><label>Date</label><input id="pDate" type="date" value="${today()}"></div><div><label>For month</label><input id="pMonth" type="month" value="${m}"></div></div><label>Amount (R) — expected ${R(Math.max(st.balance,0))}</label><input id="pAmount" type="number" min="0" step="any" value="${st.balance>0?st.balance:""}"><label>Method</label><select id="pMethod"><option>EFT</option><option>Cash</option><option>Other</option></select><label>Reason (required if the amount differs from the expected amount)</label><input id="pReason" placeholder="e.g. public holiday, reduced fee">${dateModeStudents(rid).length?`<label>Next payment due (for students with a chosen date)</label><input id="pNext" type="date" value="${suggestNext(rid,m)}">`:""}<div id="pErr" class="field-error" style="display:none"></div><div class="actions" style="margin-top:14px;justify-content:flex-end"><button class="btn" onclick="openStatement('${rid}')">Cancel</button><button class="btn primary" onclick="savePayment('${rid}')">Save payment</button></div>`);
 }
 function savePayment(rid){
  const amount=parseFloat($("pAmount").value),month=$("pMonth").value||payMonth(),exp=statement(rid,month).balance,reason=$("pReason").value.trim(),err=$("pErr");
@@ -1803,14 +1818,7 @@ function saveDropIn(classId,date,sid,clear){
  const f=clear?null:dropInRead();if(f)a.fee=f;else delete a.fee;
  save();closeModal();renderAttendance();renderPayments();
 }
-function payBtn(a,classId,date,s){
- if(a.status==="absent")return ""; // no payments for students marked absent
- const f=a.fee;let t="Mark payment",cls="";
- if(a.free){t="Free · no charge";cls="selected-present"}
- else if(f&&f.method!=="Unpaid"){t=R(f.amount)+" · "+f.method;cls="selected-present"}
- else if(f){t="Owes "+R(f.amount);cls="selected-absent"}
- return `<button class="${cls}" onclick="openMarkPay({classId:'${classId}',date:'${date}',studentId:'${a.studentId}'})">${t}</button>`;
-}
+
 const amtv=v=>(v===""||v===undefined||v===null||isNaN(v))?"":v;
 function openRates(kind){
  window._rateKind=kind||"dropRates";window._rates=db[window._rateKind].map(r=>({...r})).sort(rateSort);window._rateOpen=-1;window._rateSnap=null;
@@ -1861,120 +1869,203 @@ function rateSave(){
  const ok=window._rates.filter(r=>r.name&&amtv(r.amount)!=="").map(({_new,...r})=>r).sort(rateSort);
  db[window._rateKind]=ok;save();closeModal();toast("Rates saved");
 }
-// ===== Mark payment (quick) =====
-// One screen for: payment for this class (paid / owes / free), and/or a monthly payment (this month, next month, ...).
+// ===== Mark payment (quick): who is paying -> how much -> what it is for =====
 function mpShiftMonth(ym,n){const [y,m]=ym.split("-").map(Number);return ymd(new Date(y,m-1+n,1)).slice(0,7)}
 function mpMonthLabel(ym){const [y,m]=ym.split("-").map(Number);return new Date(y,m-1,1).toLocaleDateString(undefined,{month:"short",year:"numeric"})}
+function mpDaysAgo(n){const d=new Date();d.setDate(d.getDate()-n);return localDateStr(d)}
+function attendanceCtx(){return {classId:$("attClass").value,date:$("attDate").value}}
+// Who is paying: "r:<recipient id>", "s:<student id>" or "t:<classId>|<date>|<temporary student id>"
+function mpScope(who){
+ const o={rid:"",students:[],temp:null,name:"",viaStudent:false};
+ if(!who)return o;
+ const k=who[0],v=who.slice(2);
+ if(k==="r"){const r=recById(v);if(r){o.rid=r.id;o.name=r.name;o.students=db.students.filter(s=>s.recipientId===r.id&&s.active!==false)}}
+ else if(k==="s"){const s=studentById(v);if(s){const r=s.recipientId&&recById(s.recipientId);o.rid=r?r.id:"";o.name=r?r.name:s.name;o.students=[s];o.viaStudent=true}}
+ else if(k==="t"){const [classId,date,sid]=v.split("|"),rec=getRecord(classId,date),a=rec&&rec.records.find(x=>x.studentId===sid);if(a){o.temp={classId,date,sid,a};o.name=a.name||"Temporary student"}}
+ return o;
+}
+function mpOptionsFor(sc){
+ if(!sc.rid&&!sc.students.length&&!sc.temp)return [];
+ const o=[];
+ if(sc.rid&&sc.students.some(s=>(s.timing||"advance")!=="perclass"))o.push(["monthly","What they're expected to pay — monthly"]);
+ if(sc.students.some(s=>s.timing==="perclass"))o.push(["perclass","What they're expected to pay — per class"]);
+ o.push(["dropin","Drop-in class"],["free","Free lesson — no charge"],["other","Something else"]);
+ return o;
+}
+// lessons a student can have a payment marked on: not cancelled, not marked absent, last 60 days (including days not opened in Attendance yet)
+function mpLessons(sid){
+ const out=[],seen=new Set(),t=today(),min=mpDaysAgo(60);
+ const push=(classId,date,a)=>{
+   const k=classId+"|"+date;if(seen.has(k))return;seen.add(k);
+   const c=db.classes.find(x=>x.id===classId);
+   out.push({classId,date,label:(c?c.name:"Class")+" · "+fmtClassDate(date)+(a&&a.free?" — free":a&&a.fee?(a.fee.method==="Unpaid"?" — owes "+R(a.fee.amount):" — paid "+R(a.fee.amount)):"")});
+ };
+ db.attendance.forEach(r=>{if(r.cancelled||r.date>t||r.date<min)return;const a=r.records.find(x=>x.studentId===sid);if(!a||a.status==="absent")return;push(r.classId,r.date,a)});
+ for(let i=0;i<14;i++){const d=mpDaysAgo(i);classesForDate(d).forEach(c=>{if(getRecord(c.id,d))return;if(!(c.studentIds||[]).includes(sid)||!studentActiveOn(sid,d))return;push(c.id,d,null)})}
+ out.sort((a,b)=>b.date.localeCompare(a.date)||String(a.label).localeCompare(String(b.label)));
+ return out;
+}
 function openMarkPay(ctx){
  ctx=ctx||{};window._mp=ctx;
- let r=null,a=null,s=null,c=null;
- if(ctx.classId){
-   r=getRecord(ctx.classId,ctx.date);a=r&&r.records.find(x=>x.studentId===ctx.studentId);
-   c=db.classes.find(x=>x.id===ctx.classId);s=db.students.find(x=>x.id===ctx.studentId);
-   if(!a){alert("That student is no longer on this lesson.");return}
-   if(r.cancelled){alert("This lesson is cancelled, so no payment can be recorded for it.");return}
-   if(a.status==="absent"){alert("This student is marked absent, so no payment can be recorded for them.");return}
+ const t=today(),groups=[];
+ // 1. people on the lesson open in Attendance (not marked absent)
+ const lr=ctx.classId&&ctx.date&&ctx.date<=t?getRecord(ctx.classId,ctx.date):null;
+ if(lr&&!lr.cancelled){
+   const lc=db.classes.find(x=>x.id===ctx.classId);
+   const on=lr.records.filter(a=>a.status!=="absent").map(a=>a.temporary?`<option value="t:${ctx.classId}|${ctx.date}|${a.studentId}">${esc(a.name||"Temporary student")} (temporary)</option>`:`<option value="s:${a.studentId}">${esc((studentById(a.studentId)||{}).name||"Student")}</option>`);
+   if(on.length)groups.push(`<optgroup label="On this lesson${lc?" — "+esc(lc.name):""}">${on.join("")}</optgroup>`);
  }
- const temp=!!(a&&a.temporary),who=a?(s?s.name:(a.name||"Student")):"";
- const perclass=!!(s&&s.timing==="perclass");
+ // 2. families / payers
  const recs=db.recipients.slice().sort((x,y)=>x.name.localeCompare(y.name));
- const defRid=ctx.rid||(s&&s.recipientId)||"";
- const ex=a&&a.fee,free=a&&a.free;
- const clsMode=a?(free?"free":ex?(ex.method==="Unpaid"?"owes":"paid"):((temp||perclass)?"paid":"")):"";
- const monthOn=a?(!temp&&!perclass&&!ex&&!free):true;
- const defAmt=ex?ex.amount:(perclass&&s.fee!==""&&s.fee!==undefined?s.fee:"");
- const rates=db.dropRates.slice().sort(rateSort);
- const rateSel=`<select id="dRate" onchange="dropRatePick()"><option value="">Custom amount</option>${rates.map(x=>`<option value="${x.id}" ${ex&&ex.rate===x.name&&Number(ex.amount)===Number(x.amount)?"selected":""}>${esc(x.name)} — ${R(x.amount)}</option>`).join("")}</select>`;
- const m0=ctx.classId?monthNow():payMonth(),thisM=monthNow(),nextM=mpShiftMonth(thisM,1);
- const method0=ex&&ex.method!=="Unpaid"?ex.method:(monthOn?"EFT":"Cash");
- openModal(`<h2>Mark payment</h2><div class="muted small">${a?esc(who)+" · "+esc(c?c.name:"")+" · "+esc(fmt(ctx.date)):"Record a payment that has been received."}</div>
- <label>Who is paying</label>${temp?`<input value="${esc(who)}" disabled>`:`<select id="mpRec" onchange="mpRefresh(true)"><option value="">— choose —</option>${recs.map(x=>`<option value="${x.id}" ${x.id===defRid?"selected":""}>${esc(x.name)} (${esc(x.ref)})</option>`).join("")}</select>`}
- ${a?`<div class="mp-block"><h3>This class</h3><select id="mpCls" onchange="mpSync()"><option value="" ${clsMode===""?"selected":""}>Nothing for this class</option><option value="paid" ${clsMode==="paid"?"selected":""}>Paid</option><option value="owes" ${clsMode==="owes"?"selected":""}>Not paid yet (they owe it)</option><option value="free" ${clsMode==="free"?"selected":""}>Free — no charge</option></select>
-   <div id="mpClsPaid"><label>Rate</label>${rateSel}<label>Amount (R)</label><input id="dAmt" type="number" min="0" step="any" value="${amtv(defAmt)}"></div>
-   <div id="mpClsFree"><label>Reason (optional)</label><input id="mpFreeWhy" value="${esc(free?(free.reason||""):"")}" placeholder="e.g. Free lesson to say sorry for a forgotten lesson"><div class="small muted" style="margin-top:4px">Counts as attended, but they are not charged for it.</div></div></div>`:""}
- ${temp?"":`<div class="mp-block">${a?`<label style="display:flex;gap:8px;align-items:center;margin:0"><input type="checkbox" id="mpMonthOn" style="width:auto;margin:0" onchange="mpRefresh()" ${monthOn?"checked":""}> Also record a monthly payment</label>`:`<h3>Monthly payment</h3>`}
-   <div id="mpMonthBox"><label>For month</label><input id="mpMonth" type="month" value="${m0}" onchange="mpRefresh(true)"><div class="actions" style="margin-top:6px"><button type="button" class="btn" onclick="mpMonthSet(0)">${esc(mpMonthLabel(thisM))}</button><button type="button" class="btn" onclick="mpMonthSet(1)">${esc(mpMonthLabel(nextM))}</button></div>
-   <label id="mpAmtLbl">Amount (R)</label><input id="mpAmt" type="number" min="0" step="any" oninput="this.dataset.touched=1">
-   <label>Reason (required if the amount differs from the expected amount)</label><input id="mpReason" placeholder="e.g. public holiday, reduced fee"><div id="mpNextWrap"></div></div></div>`}
- <div id="mpCommon" class="grid two"><div><label>Method</label><select id="mpMethod">${["Cash","EFT","Other"].map(x=>`<option ${x===method0?"selected":""}>${x}</option>`).join("")}</select></div><div><label>Date received</label><input id="mpDate" type="date" value="${today()}"></div></div>
+ if(recs.length)groups.push(`<optgroup label="Families and payers">${recs.map(r=>{const names=db.students.filter(s=>s.recipientId===r.id&&s.active!==false).map(s=>s.name).filter(n=>normName(n)!==normName(r.name));return `<option value="r:${r.id}" ${ctx.rid===r.id?"selected":""}>${esc(r.name)} (${esc(r.ref)})${names.length?" — "+esc(names.join(", ")):""}</option>`}).join("")}</optgroup>`);
+ // 3. recent temporary students (drop-ins) from other lessons
+ const min=mpDaysAgo(45),temps=[];
+ db.attendance.forEach(r=>{if(r.cancelled||r.date>t||r.date<min)return;if(lr&&r.id===lr.id)return;r.records.forEach(a=>{if(a.temporary&&a.status!=="absent")temps.push({r,a})})});
+ temps.sort((x,y)=>y.r.date.localeCompare(x.r.date));
+ if(temps.length)groups.push(`<optgroup label="Temporary students (recent)">${temps.map(({r,a})=>`<option value="t:${r.classId}|${r.date}|${a.studentId}">${esc(a.name||"Temporary student")} — ${esc((db.classes.find(c=>c.id===r.classId)||{}).name||r.className||"Class")}, ${esc(fmtClassDate(r.date))}</option>`).join("")}</optgroup>`);
+ // 4. students with no payer set yet
+ const nop=db.students.filter(s=>s.active!==false&&!s.recipientId).sort((x,y)=>x.name.localeCompare(y.name));
+ if(nop.length)groups.push(`<optgroup label="Students with no payer set yet">${nop.map(s=>`<option value="s:${s.id}">${esc(s.name)}</option>`).join("")}</optgroup>`);
+ ctx.defMonth=ctx.classId?monthNow():payMonth();
+ const thisM=monthNow();
+ openModal(`<h2>Mark payment</h2><div class="muted small">Who paid, how much, and what it was for.</div>
+ <label>Who is paying</label><select id="mpWho" onchange="mpWhoChanged()"><option value="">— choose —</option>${groups.join("")}</select>
+ <div id="mpWhoNote" class="small muted" style="margin-top:4px"></div>
+ <div id="mpAmtWrap"><label>How much (R)</label><input id="mpAmt" type="number" min="0" step="any" oninput="this.dataset.touched=1"><div id="mpHint" class="small muted" style="margin-top:4px"></div></div>
+ <label>What is it for</label><div id="mpFor"><div class="small muted">Choose who is paying first.</div></div>
+ <div id="mpDet"></div>
+ <div id="mpCommon" class="grid two" style="display:none"><div><label>Method</label><select id="mpMethod"><option>Cash</option><option>EFT</option><option>Other</option></select></div><div><label>Date received</label><input id="mpDate" type="date" value="${t}"></div></div>
  <div id="mpErr" class="field-error" style="display:none"></div>
- <div class="actions" style="margin-top:14px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button>${(ex||free)?`<button class="btn danger" onclick="mpClear()">Clear class payment</button>`:""}<button class="btn primary" onclick="mpSave()">Save</button></div>`);
- mpRefresh(true);
+ <div class="actions" style="margin-top:14px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button id="mpRemove" class="btn danger" style="display:none" onclick="mpRemoveMark()">Remove existing mark</button><button class="btn primary" onclick="mpSave()">Save</button></div>`);
+ if(ctx.rid)mpWhoChanged();
 }
-function mpSync(){
- const cm=$("mpCls")?$("mpCls").value:"";
- if($("mpClsPaid"))$("mpClsPaid").style.display=(cm==="paid"||cm==="owes")?"block":"none";
- if($("mpClsFree"))$("mpClsFree").style.display=cm==="free"?"block":"none";
- const monthOn=!!$("mpMonthBox")&&(!$("mpMonthOn")||$("mpMonthOn").checked);
- if($("mpMonthBox"))$("mpMonthBox").style.display=monthOn?"block":"none";
- if($("mpCommon"))$("mpCommon").style.display=(cm==="paid"||monthOn)?"grid":"none";
+function mpFor(){const x=document.querySelector('input[name="mpForR"]:checked');return x?x.value:""}
+function mpStudentId(){return $("mpStu")?$("mpStu").value:""}
+function mpWhoChanged(){
+ const sc=mpScope($("mpWho").value),opts=mpOptionsFor(sc),keep=mpFor();
+ const cur=opts.some(o=>o[0]===keep)?keep:(opts[0]?opts[0][0]:"");
+ $("mpFor").innerHTML=opts.length?opts.map(([k,l])=>`<label class="class-student-row" style="margin:0 0 6px"><input type="radio" name="mpForR" value="${k}" ${k===cur?"checked":""} onchange="mpForChanged(true)" style="width:auto;margin:0"> <span>${esc(l)}</span></label>`).join(""):`<div class="small muted">Choose who is paying first.</div>`;
+ const rc=sc.rid&&recById(sc.rid);
+ $("mpWhoNote").textContent=sc.viaStudent?(rc?"Pays via "+rc.name+" ("+rc.ref+")":"This student has no payer set yet, so a monthly payment can't be recorded for them."):"";
+ mpForChanged(true);
 }
-function mpRefresh(reset){
- mpSync();
- if(!$("mpMonthBox"))return;
- const monthOn=!$("mpMonthOn")||$("mpMonthOn").checked;if(!monthOn)return;
- const rid=$("mpRec")?$("mpRec").value:"",m=$("mpMonth").value||payMonth(),am=$("mpAmt");
- if(reset&&am)delete am.dataset.touched;
- const exp=rid?Math.max(statement(rid,m).balance,0):0;
- $("mpAmtLbl").textContent="Amount (R) — expected "+R(exp);
- if(am&&!am.dataset.touched)am.value=exp>0?exp:"";
- const nw=$("mpNextWrap");
- if(nw&&(reset||!nw.innerHTML))nw.innerHTML=(rid&&dateModeStudents(rid).length)?`<label>Next payment due (for students with a chosen date)</label><input id="mpNext" type="date" value="${suggestNext(rid,m)}">`:"";
-}
-function mpMonthSet(n){$("mpMonth").value=mpShiftMonth(monthNow(),n);mpRefresh(true)}
-function mpSave(){
- const c=window._mp||{},err=$("mpErr"),bad=m=>{err.textContent=m;err.style.display="block"};
- err.style.display="none";
- let r=null,a=null,s=null;
- if(c.classId){
-   r=getRecord(c.classId,c.date);a=r&&r.records.find(x=>x.studentId===c.studentId);
-   if(!a)return bad("That student is no longer on this lesson.");
-   if(a.status==="absent")return bad("This student is marked absent, so no payment can be recorded for them.");
-   s=db.students.find(x=>x.id===a.studentId);
- }
- const temp=!!(a&&a.temporary),mode=a?$("mpCls").value:"";
- const monthOn=!temp&&(!$("mpMonthOn")||$("mpMonthOn").checked);
- if(!mode&&!monthOn)return bad("Choose what this payment is for.");
- const method=$("mpMethod").value,date=$("mpDate").value||today(),rid=$("mpRec")?$("mpRec").value:"";
- let fee=null;
- if(mode==="paid"||mode==="owes"){
-   const amt=parseFloat($("dAmt").value);
-   if(!(amt>0))return bad("Enter the amount for this class.");
-   const sel=$("dRate"),rate=sel.value?(db.dropRates.find(x=>x.id===sel.value)||{}).name:"Custom",rec=rid&&recById(rid);
-   fee={amount:amt,method:mode==="owes"?"Unpaid":method,rate:rate||"Custom",payer:temp?(a.name||""):(rec?rec.name:(s?s.name:""))};
- }
- let pay=null;
- if(monthOn){
-   if(!rid)return bad("Choose who is paying.");
-   const month=$("mpMonth").value;if(!month)return bad("Choose the month.");
-   const amount=parseFloat($("mpAmt").value);if(!(amount>0))return bad("Enter the monthly amount received.");
-   const exp=statement(rid,month).balance,reason=$("mpReason").value.trim();
-   if(Math.abs(amount-exp)>0.005&&!reason)return bad("The amount differs from the expected "+R(Math.max(exp,0))+". Please add a reason.");
-   pay={id:uid(),recipientId:rid,date,month,amount,method,reason};
- }
- let nowPresent=false;
- if(a){
-   if(mode==="paid"||mode==="owes"){
-     a.fee=fee;delete a.free;
-     if(temp&&mode==="paid"&&c.date<=today()&&!a.status){a.status="present";nowPresent=true} // a temporary student who has paid is here
-   }else if(mode==="free"){
-     a.free={reason:$("mpFreeWhy").value.trim()};delete a.fee; // free lesson: counts as attended, never charged
+function mpForChanged(reset){
+ const f=mpFor(),sc=mpScope($("mpWho").value),box=$("mpDet");
+ $("mpAmtWrap").style.display=f==="free"?"none":"block";
+ $("mpCommon").style.display=(!f||f==="free")?"none":"grid";
+ let h="";
+ if(f==="monthly"){
+   const t=monthNow(),n=mpShiftMonth(t,1);
+   h=`<label>For which month</label><input id="mpMonth" type="month" value="${window._mp.defMonth}" onchange="mpMonthChanged()"><div class="actions" style="margin-top:6px"><button type="button" class="btn" onclick="mpMonthSet(0)">${esc(mpMonthLabel(t))}</button><button type="button" class="btn" onclick="mpMonthSet(1)">${esc(mpMonthLabel(n))}</button></div><label>Reason (only needed if the amount differs from what's expected)</label><input id="mpReason" placeholder="e.g. public holiday, reduced fee"><div id="mpNextWrap"></div>`;
+ }else if(f==="other"){
+   h=`<label>What is it for?</label><input id="mpNote" placeholder="e.g. grading fee, uniform, belt">`;
+ }else if(f==="perclass"||f==="dropin"||f==="free"){
+   if(sc.temp){
+     const c=db.classes.find(x=>x.id===sc.temp.classId);
+     h=`<div class="small" style="margin-top:10px"><b>${esc(sc.temp.a.name||"Temporary student")}</b> · ${esc(c?c.name:"Class")} · ${esc(fmtClassDate(sc.temp.date))}</div>`;
+   }else{
+     const stus=f==="perclass"?sc.students.filter(s=>s.timing==="perclass"):sc.students;
+     h=(stus.length>1?`<label>Which student</label><select id="mpStu" onchange="mpLessonsRefresh();mpAutoAmount(true)">${stus.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select>`:`<input type="hidden" id="mpStu" value="${stus[0]?stus[0].id:""}"><div class="small" style="margin-top:10px">Student: <b>${stus[0]?esc(stus[0].name):"—"}</b></div>`)+`<label>Which lesson</label><select id="mpLes" onchange="mpLesChanged()"></select>`;
    }
+   if(f==="dropin")h+=`<label>Drop-in rate (fills in the amount)</label><select id="mpRate" onchange="mpRatePick()"><option value="">Custom amount</option>${db.dropRates.slice().sort(rateSort).map(x=>`<option value="${x.id}">${esc(x.name)} — ${R(x.amount)}</option>`).join("")}</select>`;
+   if(f==="free")h+=`<label>Reason (optional)</label><input id="mpFreeWhy" placeholder="e.g. Free lesson to say sorry for a forgotten lesson"><div class="small muted" style="margin-top:4px">Counts as attended, but they are not charged for it.</div>`;
+   h+=`<div id="mpLesNote" class="small" style="margin-top:6px;color:#9a6700"></div>`;
  }
- if(pay){
-   db.payments.push(pay);
-   const nd=$("mpNext")?.value;if(nd)dateModeStudents(rid).forEach(x=>{x.nextDue=nd});
-   if(!a&&$("payMonth"))$("payMonth").value=pay.month;
+ box.innerHTML=h;
+ if($("mpLes"))mpLessonsRefresh();else mpLesChanged();
+ if(f==="monthly")mpNextRefresh();
+ mpAutoAmount(reset);
+}
+function mpLessonsRefresh(){
+ const sel=$("mpLes");if(!sel)return;
+ const list=mpLessons(mpStudentId()),ctx=window._mp||{},pref=ctx.classId&&ctx.date?ctx.classId+"|"+ctx.date:"";
+ sel.innerHTML=list.length?list.map(x=>`<option value="${x.classId}|${x.date}">${esc(x.label)}</option>`).join(""):`<option value="">No lessons found</option>`;
+ if(list.some(x=>x.classId+"|"+x.date===pref))sel.value=pref;
+ mpLesChanged();
+}
+function mpTarget(sc){
+ if(sc.temp)return {classId:sc.temp.classId,date:sc.temp.date,sid:sc.temp.sid};
+ const sid=mpStudentId(),v=$("mpLes")?$("mpLes").value:"";if(!sid||!v)return null;
+ const p=v.split("|");return {classId:p[0],date:p[1],sid};
+}
+function mpTargetRecord(tg){const r=tg&&getRecord(tg.classId,tg.date);return {r,a:r&&r.records.find(x=>x.studentId===tg.sid)}}
+function mpLesChanged(){
+ const note=$("mpLesNote"),rm=$("mpRemove"),sc=mpScope($("mpWho").value),tg=mpTarget(sc);
+ const a=tg?mpTargetRecord(tg).a:null;
+ if(note){
+   let txt="";
+   if($("mpLes")&&!$("mpLes").value)txt="No lessons found for this student in the last 60 days. (Lessons they were marked absent for are not listed.)";
+   else if(a&&a.free)txt="This lesson is already marked free. Saving will replace that.";
+   else if(a&&a.fee)txt=(a.fee.method==="Unpaid"?"This lesson is currently marked as owing ":"This lesson is already marked as paid ")+R(a.fee.amount)+". Saving will replace that.";
+   note.textContent=txt;
+ }
+ if(rm)rm.style.display=(a&&(a.free||a.fee))?"inline-block":"none";
+}
+function mpRatePick(){const r=db.dropRates.find(x=>x.id===$("mpRate").value),am=$("mpAmt");if(r){am.value=r.amount;am.dataset.touched=1}}
+function mpAutoAmount(reset){
+ const am=$("mpAmt"),hint=$("mpHint");if(!am)return;
+ if(reset)delete am.dataset.touched;
+ const f=mpFor(),sc=mpScope($("mpWho").value);let v="",h="";
+ if(f==="monthly"&&sc.rid&&$("mpMonth")&&$("mpMonth").value){const m=$("mpMonth").value,e=Math.max(statement(sc.rid,m).balance,0);h="Expected for "+mpMonthLabel(m)+": "+R(e);v=e>0?e:""}
+ else if(f==="perclass"){const s=studentById(mpStudentId());if(s&&s.fee!==""&&s.fee!==undefined){v=s.fee;h="Their rate: "+R(s.fee)+" per class"}}
+ hint.textContent=h;
+ if(!am.dataset.touched)am.value=v;
+}
+function mpNextRefresh(){
+ const nw=$("mpNextWrap"),sc=mpScope($("mpWho").value);if(!nw)return;
+ const m=$("mpMonth").value||window._mp.defMonth;
+ nw.innerHTML=(sc.rid&&dateModeStudents(sc.rid).length)?`<label>Next payment due (for students with a chosen date)</label><input id="mpNext" type="date" value="${suggestNext(sc.rid,m)}">`:"";
+}
+function mpMonthChanged(){mpAutoAmount(true);mpNextRefresh()}
+function mpMonthSet(n){$("mpMonth").value=mpShiftMonth(monthNow(),n);mpMonthChanged()}
+function mpSave(){
+ const err=$("mpErr"),bad=m=>{err.textContent=m;err.style.display="block"};
+ err.style.display="none";
+ const who=$("mpWho").value;if(!who)return bad("Choose who is paying.");
+ const sc=mpScope(who),f=mpFor();if(!f)return bad("Choose what it is for.");
+ const method=$("mpMethod").value,date=$("mpDate").value||today(),amount=parseFloat($("mpAmt").value);
+ if(f!=="free"&&!(amount>0))return bad("Enter how much was paid.");
+ const ctx=window._mp||{};
+ if(f==="monthly"){
+   if(!sc.rid)return bad("This student has no Invoice Recipient yet, so a monthly payment can't be recorded. Set one on the student first.");
+   const month=$("mpMonth").value;if(!month)return bad("Choose the month.");
+   const exp=statement(sc.rid,month).balance,reason=$("mpReason").value.trim();
+   if(Math.abs(amount-exp)>0.005&&!reason)return bad("The amount differs from the expected "+R(Math.max(exp,0))+". Please add a reason.");
+   db.payments.push({id:uid(),recipientId:sc.rid,date,month,amount,method,reason,payer:sc.name});
+   const nd=$("mpNext")?.value;if(nd)dateModeStudents(sc.rid).forEach(x=>{x.nextDue=nd});
+   if(!ctx.classId&&$("payMonth"))$("payMonth").value=month;
+   toast("Monthly payment saved");
+ }else if(f==="other"){
+   const note=$("mpNote").value.trim();if(!note)return bad("Say what the payment is for.");
+   db.payments.push({id:uid(),recipientId:sc.rid||"",date,month:date.slice(0,7),amount,method,reason:note,kind:"other",payer:sc.name});
+   toast("Payment saved");
+ }else{
+   const tg=mpTarget(sc);if(!tg)return bad("Choose the lesson.");
+   const rec=getRecord(tg.classId,tg.date)||ensureRecord(tg.classId,tg.date);
+   const a=rec&&rec.records.find(x=>x.studentId===tg.sid);
+   if(!a)return bad("That student isn't on that lesson.");
+   if(rec.cancelled)return bad("That lesson was cancelled.");
+   if(a.status==="absent")return bad("This student is marked absent for that lesson, so no payment can be recorded for it.");
+   if(f==="free"){
+     a.free={reason:$("mpFreeWhy").value.trim()};delete a.fee; // counts as attended, never charged
+     toast("Marked as a free lesson");
+   }else{
+     const s=studentById(tg.sid),sel=$("mpRate");
+     const rate=f==="perclass"?((s&&s.rateName)||"Per class"):(sel&&sel.value?((db.dropRates.find(x=>x.id===sel.value)||{}).name||"Custom"):"Custom");
+     a.fee={amount,method,rate,payer:sc.name};delete a.free;
+     if(a.temporary&&f==="dropin"&&!a.status&&tg.date<=today()){a.status="present";toast("Payment saved — marked present")}else toast("Payment saved");
+   }
+   save();
  }
  save();closeModal();
- if(a)renderAttendance();
+ if($("attClass"))renderAttendance();
  renderPayments();
- toast(mode==="free"&&!pay?"Marked as a free lesson":nowPresent?"Payment saved — marked present":(mode==="owes"&&!pay)?"Saved — payment still owing":"Payment saved");
 }
-function mpClear(){
- const c=window._mp||{},r=getRecord(c.classId,c.date),a=r&&r.records.find(x=>x.studentId===c.studentId);if(!a)return;
- delete a.fee;delete a.free;save();closeModal();renderAttendance();renderPayments();toast("Class payment cleared");
+function mpRemoveMark(){
+ const tg=mpTarget(mpScope($("mpWho").value)),a=tg&&mpTargetRecord(tg).a;if(!a)return;
+ delete a.fee;delete a.free;save();closeModal();renderAttendance();renderPayments();toast("Mark removed");
 }
+function deleteOtherPayment(id){if(!confirm("Delete this payment record?"))return;db.payments=db.payments.filter(p=>p.id!==id);save();renderPayments();toast("Payment deleted")}
 function inactiveToggle(){$("sInactiveBox").style.display=$("sActive").value==="false"?"block":"none"}
 function studentFormInit(){if($("sTiming"))payFormToggle()}
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
