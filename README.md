@@ -42,6 +42,13 @@ A single-page web app for running classes: attendance, students, classes, progra
 - **Next payment due**: set on each student (past or future dates both work). Recording a payment suggests the next date, end of next month for end-of-month payers, and the Payments tab shows overdue days.
 - **Drop-in rates**: Payments → Drop-in rates. Create your own rates (name + amount); nothing is hardcoded.
 - **Payment at class**: when adding a temporary student, pick a rate and Cash/EFT/Not paid yet. The button on their attendance row (and on per-class students) edits it later. Unpaid drop-ins appear under "Drop-ins owing".
+- **Mark payment button**: on every attendance row (hidden for students marked absent, who cannot be paid for) and in the Payments tab (top button, each statement, each amount owing). One screen records who is paying, and either or both of: a payment for this class (Paid, Not paid yet, or Free — no charge) and a monthly payment for any month (buttons for this month and next month). Paying for a class today and next month in one go is done here.
+- **Free lessons**: choose "Free — no charge" (with an optional reason). The lesson still counts as attended but is never charged, including on per-class and shared-class statements.
+- **Temporary students**: when adding one you can leave payment unmarked, mark it paid (Cash/EFT/Other) or mark it as owing. A temporary student who has paid is also marked Present.
+- **Present / Absent**: tap the selected button again to clear it and leave the student unmarked. A student with a payment marked for the lesson cannot be marked absent until that payment is cleared.
+- **Payments search**: the box at the top finds a family by name, reference or any of its students' names, and shows which tab the matches are in.
+- **Statements**: tap a student's row in the top table to see only that student's attendance below.
+- **Rates** are listed most expensive first (rate popups and the rate drop-downs).
 - **WhatsApp reminder**: opens WhatsApp with a ready message; you tap Send. Nothing is sent automatically.
 
 ## How the data is stored and kept in sync
