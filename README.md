@@ -21,7 +21,7 @@ A single-page web app for running classes: attendance, students, classes, progra
 
 **Classes**
 - Recurring (chosen weekdays) or once-off (one date). A new recurring class only appears from its start date.
-- A class can be paused from a date, with an optional date it comes back. Paused classes are listed last.
+- A class can be paused from a date, with an optional date it comes back. Paused classes are listed last and cannot be edited or have attendance taken (resume them first).
 - Search plus program and label filters, listed A to Z.
 
 **History**
@@ -34,7 +34,7 @@ A single-page web app for running classes: attendance, students, classes, progra
 
 ## Payments
 
-- **Payments tab**: pick a month to see Due now, Due soon (end-of-month payers) and Paid up, with totals.
+- **Payments tab**: Due now, Due soon and Paid up list every month together (each row says which month it is for). Use the month picker to narrow the lists to one month, and **All months** to go back. Filters for Monthly / Per class / Drop-ins and a search box sit above the lists. Months from before the first payment was ever recorded are not flagged, and a new student's first month is not owed again when every lesson they attended was paid as a drop-in.
 - **Student form → Payment**: Invoice Recipient (who pays; siblings share one), payment timing, pricing method and amount.
 - **Recipient**: each gets a unique reference such as `ALK-001` to use on every bank payment. Edit it, and add a WhatsApp number, from the statement.
 - **Statement**: attendance and amount per student, payments made and the balance. Per-class payers are shown but never flagged as unpaid.
@@ -42,9 +42,9 @@ A single-page web app for running classes: attendance, students, classes, progra
 - **Next payment due**: set on each student (past or future dates both work). Recording a payment suggests the next date, end of next month for end-of-month payers, and the Payments tab shows overdue days.
 - **Drop-in rates**: Payments → Drop-in rates. Create your own rates (name + amount); nothing is hardcoded.
 - **Payment at class**: when adding a temporary student, pick a rate and Cash/EFT/Not paid yet. The button on their attendance row (and on per-class students) edits it later. Unpaid drop-ins appear under "Drop-ins owing".
-- **Mark payment** (one button at the top of the Attendance tab and one on the Payments tab): pick who is paying, how much, and what it is for. What it can be for depends on the payer's arrangement: what they are expected to pay (monthly for any month, or per class for a chosen lesson), a drop-in class (pick a drop-in rate and the lesson), a free lesson (no charge, optional reason; counts as attended but is never charged), or something else (a note, such as a grading fee; it never reduces a month's statement). A new student who paid a drop-in and the whole of next month is two marks: one for the month, one for the lesson.
-- Students marked absent can't be paid for: they are left out of the lesson lists, and a student with a payment on a lesson can't be marked absent until it is removed (Mark payment → pick the same lesson → Remove existing mark).
-- **Statements**: tap a family, then **Mark payment** on the statement for the usual monthly payment screen. Tap a student's row in the top table to see only that student's attendance.
+- **Mark payment** (one button at the top of the Attendance tab and one on the Payments tab): choose who is paying, then what it is for. For their normal arrangement it shows how much (filled in with the expected amount; a reason box appears if you change it) and then the month (monthly, current month by default) or the class (per class; only lessons the student attended that are not yet paid for). For a drop-in, tap a drop-in rate (it fills the amount, which you can change; a reason box appears for a different amount) and pick the lesson. "Something else" asks how much and what for (for example a grading fee; it never reduces a month's statement). Method and date are always asked. A new student who paid a drop-in and the whole of next month is two marks: one monthly, one drop-in.
+- Students marked absent can't be paid for: they are left out of the lesson lists. A student with a payment on a lesson can't be marked absent until that payment is cleared (Payments → Paid up → Paid at class).
+- **Statements**: tap a family row to open its statement for that month (use ‹ › to change month), then **Mark payment** for the usual monthly payment screen. The statement is one table; tap a student's row to see only that student's attendance below it.
 - **Temporary students**: when adding one you can leave payment unmarked, mark it paid (Cash/EFT/Other) or mark it as owing. A temporary student who has paid is also marked Present.
 - **Present / Absent**: tap the selected button again to clear it and leave the student unmarked. A student with a payment marked for the lesson cannot be marked absent until that payment is cleared.
 - **Payments search**: the box at the top finds a family by name, reference or any of its students' names, and shows which tab the matches are in.
