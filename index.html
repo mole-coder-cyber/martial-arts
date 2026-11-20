@@ -74,6 +74,14 @@ dialog{border:0;border-radius:13px;padding:0;width:min(560px,calc(100% - 24px));
 @media(max-width:700px){.sync-badge{flex-basis:100%;text-align:right}.status-text{flex-basis:100%;text-align:right;white-space:normal;max-width:none}main{padding:12px}.grid.two,.grid.three{grid-template-columns:1fr}.att-row{grid-template-columns:1fr}.att-buttons button{flex:1}.att-buttons{width:100%}header{align-items:flex-start}.header-actions{justify-content:flex-end}}
 .demo-banner{background:#e0a93b;color:#1b1b1b;padding:8px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;font-weight:600}.demo-banner button{background:#1b1b1b;color:#fff;border:0;border-radius:7px;padding:6px 10px;white-space:nowrap}
 .att-buttons{flex-wrap:wrap}
+.att-more{position:relative;flex:0 0 auto}.att-buttons .att-more>button{min-width:44px;font-weight:800;letter-spacing:1px}
+.att-menu{display:none;position:absolute;right:0;top:calc(100% + 4px);z-index:25;background:#fff;border:1px solid var(--line);border-radius:9px;box-shadow:0 8px 25px #0002;min-width:170px;padding:4px}
+.att-menu.open{display:block}
+.att-buttons .att-menu button{display:block;width:100%;min-width:0;text-align:left;border:0;background:none;padding:10px 12px;border-radius:6px;font-weight:600}
+.att-buttons .att-menu button:hover:not(:disabled){background:#f4f6f8}.att-buttons .att-menu button.danger-item{color:var(--bad)}
+.unmarked{margin-bottom:14px;padding:0}.unmarked summary{cursor:pointer;padding:13px 16px;font-weight:700;display:flex;align-items:center;justify-content:space-between;gap:10px;list-style:none}
+.unmarked summary::-webkit-details-marker{display:none}.unmarked summary::after{content:"\25BE";color:var(--muted);transition:transform .15s}.unmarked[open] summary::after{transform:rotate(180deg)}
+.unmarked.has-items summary{color:#8a5a00}.unmarked-list{display:flex;flex-direction:column;gap:6px;padding:0 12px 12px;max-height:320px;overflow:auto}
 .stmt-row{cursor:pointer}.stmt-row:hover td{background:#f3f6f9}.stmt-row.sel td{background:#e6eef4}.stmt-row.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 .mp-block{border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:12px;background:#fafbfc}.mp-block h3{margin-bottom:6px}
 .stmt-table{width:100%;border-collapse:collapse}
@@ -105,7 +113,7 @@ dialog{border:0;border-radius:13px;padding:0;width:min(560px,calc(100% - 24px));
 <div id="app" class="app hidden">
 <div id="demoBanner" class="demo-banner hidden"><span>DEMO MODE: this is a copy of the real data. Use anything you like, nothing is saved and it all resets when you reload.</span><button onclick="location.reload()">Reset now</button></div>
 <header>
-  <div class="brand">Martial Arts App <small>Attendance &amp; Payments · v2026-11-12-ma</small></div>
+  <div class="brand">Martial Arts App <small>Attendance &amp; Payments · v2026-11-20-ma</small></div>
   <div class="header-actions">
     <span id="syncBadge" class="sync-badge"></span>
     <span id="statusText" class="status-text" aria-live="polite"></span>
@@ -131,6 +139,10 @@ dialog{border:0;border-radius:13px;padding:0;width:min(560px,calc(100% - 24px));
       <div><h1>Take Attendance</h1><div class="muted">Choose a class and date, then mark each student.</div></div>
       <div class="actions"><button class="btn" onclick="openQuickSession()">Open Today</button><button class="btn primary" onclick="openMarkPay(attendanceCtx())">Mark payment</button></div>
     </div>
+    <details id="unmarkedBox" class="card unmarked">
+      <summary id="unmarkedSummary">Unmarked classes</summary>
+      <div id="unmarkedList" class="unmarked-list"></div>
+    </details>
     <div class="card">
       <div class="grid two">
         <div><label>Date</label><input id="attDate" type="date" onchange="attendanceDateChanged()"></div>
@@ -729,15 +741,27 @@ function classDaysOn(c,date){
  }
  return classDaysList(c);
 }
-// Works out the dates when a recurring class is edited. A day change that starts later than the current schedule
-// is stored as a new period, so earlier dates keep the old days.
-function scheduleEdit(cls,days,newDate){
- const oldDays=classDaysList(cls),oldFrom=cls.scheduleFrom||cls.startDate||"",past=cls.pastSchedules||[];
+// Works out the dates when a recurring class is edited. A change of days is stored as a new period starting on the
+// chosen date, so earlier dates keep the old days (e.g. Tuesdays in October, Wednesdays from November).
+// "touched" is true when the person changed the date box themselves.
+function scheduleEdit(cls,days,newDate,touched){
+ const oldDays=classDaysList(cls),oldFrom=cls.scheduleFrom||cls.startDate||"",past=(cls.pastSchedules||[]).map(x=>({...x}));
+ const keep={startDate:cls.startDate||"",scheduleFrom:cls.scheduleFrom||"",pastSchedules:past};
  const changed=[...oldDays].sort().join()!==[...days].sort().join();
- if(changed&&newDate&&newDate>oldFrom)return{startDate:cls.startDate||"",scheduleFrom:newDate,pastSchedules:past.concat([{from:oldFrom,until:newDate,days:oldDays.slice()}])};
- if(!changed&&past.length){
-  if(newDate&&newDate!==oldFrom&&newDate>past[past.length-1].from){const p=past.map(x=>({...x}));p[p.length-1].until=newDate;return{startDate:cls.startDate||"",scheduleFrom:newDate,pastSchedules:p}}
-  return{startDate:cls.startDate||"",scheduleFrom:cls.scheduleFrom||"",pastSchedules:past};
+ if(changed){
+  if(!newDate)newDate=today();
+  if(newDate>oldFrom)return{startDate:cls.startDate||"",scheduleFrom:newDate,pastSchedules:past.concat([{from:oldFrom,until:newDate,days:oldDays.slice()}])};
+  // an earlier (or the same) date: rewrite the history from that date on, never deleting the earlier periods
+  const trimmed=past.filter(x=>(x.from||"")<newDate);
+  trimmed.forEach(x=>{if(!x.until||x.until>newDate)x.until=newDate});
+  if(!trimmed.length)return{startDate:(cls.startDate&&newDate<cls.startDate)?newDate:(cls.startDate||""),scheduleFrom:"",pastSchedules:[]};
+  trimmed[trimmed.length-1].until=newDate;
+  return{startDate:cls.startDate||"",scheduleFrom:newDate,pastSchedules:trimmed};
+ }
+ if(!touched||!newDate)return keep;
+ if(past.length){
+  if(newDate>past[past.length-1].from){past[past.length-1].until=newDate;return{startDate:cls.startDate||"",scheduleFrom:newDate,pastSchedules:past}}
+  return keep;
  }
  return{startDate:newDate,scheduleFrom:"",pastSchedules:[]};
 }
@@ -772,11 +796,19 @@ function classTimeMinutes(time){
  return h*60+min;
 }
 function sessionMovedAway(c,date){return db.attendance.some(r=>r.classId===c.id&&r.originalDate===date&&r.date!==date)}
+function sessionHasData(r){return r.status==="completed"||!!r.cancelled||!!r.notes||(r.records||[]).some(a=>a.status||a.temporary)}
 function classesForDate(date){
  // classes scheduled for this date, minus lessons moved to another day, plus lessons moved onto this day
  const base=scheduledClassesForDate(date).filter(c=>!sessionMovedAway(c,date));
- const extra=db.classes.filter(c=>!base.includes(c)&&db.attendance.some(r=>r.classId===c.id&&r.date===date&&r.originalDate&&r.originalDate!==date));
+ const extra=db.classes.filter(c=>!base.includes(c)&&db.attendance.some(r=>r.classId===c.id&&r.date===date&&((r.originalDate&&r.originalDate!==date)||sessionHasData(r))));
  return base.concat(extra);
+}
+// True once the lesson's date and start time have arrived (no time set: the whole day counts as started)
+function lessonHasStarted(classId,date){
+ const t=today();if(date<t)return true;if(date>t)return false;
+ const c=db.classes.find(x=>x.id===classId),m=classTimeMinutes(c?sessionTime(c,date):"");
+ if(m===9999)return true;
+ const n=new Date();return n.getHours()*60+n.getMinutes()>=m;
 }
 function sessionTime(c,date){const r=getRecord(c.id,date);return (r&&r.time)||c.time||""}
 function sessionState(c,date){const r=getRecord(c.id,date);if(r&&r.cancelled)return"cancelled";if(r&&r.status==="completed")return"done";return"todo"}
@@ -807,6 +839,40 @@ function populateSelectors(){
  if(old&&classes.some(x=>x.id===old))c.value=old;else if(classes[0])c.value=classes[0].id;else c.value="";
  colorClassSelect();
  updateAttDateNote(date,classes);
+ renderUnmarked();
+}
+function unmarkedSessions(){
+ const t=today(),n=new Date(),nowM=n.getHours()*60+n.getMinutes(),out=[],dates=[];
+ db.attendance.forEach(r=>{if(r.date)dates.push(r.date)});
+ db.classes.forEach(c=>{const d=classType(c)==="once"?c.date:(c.startDate||"");if(d)dates.push(d)});
+ if(!dates.length)return out;
+ let from=dates.reduce((a,b)=>a<b?a:b);const cap=mpDaysAgo(90);if(from<cap)from=cap;
+ const d=new Date(from+"T12:00:00");
+ for(let ds=localDateStr(d);ds<=t;d.setDate(d.getDate()+1),ds=localDateStr(d)){
+  classesForDate(ds).forEach(c=>{
+   if(sessionState(c,ds)!=="todo")return;
+   if(ds===t){const m=classTimeMinutes(sessionTime(c,ds));if(m!==9999&&nowM<m)return}
+   const r=getRecord(c.id,ds),count=r?r.records.length:(c.studentIds||[]).filter(id=>studentActiveOn(id,ds)).length;
+   if(!count)return;
+   out.push({c,date:ds,m:classTimeMinutes(sessionTime(c,ds))});
+  });
+ }
+ out.sort((a,b)=>b.date.localeCompare(a.date)||a.m-b.m||String(a.c.name).localeCompare(String(b.c.name)));
+ return out;
+}
+function renderUnmarked(){
+ const box=$("unmarkedBox");if(!box)return;
+ const list=unmarkedSessions();
+ $("unmarkedSummary").textContent="Unmarked classes"+(list.length?" ("+list.length+")":"");
+ box.classList.toggle("has-items",list.length>0);
+ $("unmarkedList").innerHTML=list.length?list.map(x=>`<div class="list-item clickable" onclick="openUnmarked('${x.c.id}','${x.date}')">${esc(x.c.name)} &ndash; ${esc(fmtClassDate(x.date))}</div>`).join(""):`<div class="small muted" style="padding:4px 4px 2px">All caught up. No past classes are waiting to be marked.</div>`;
+}
+function openUnmarked(classId,date){
+ $("attDate").value=date;populateSelectors();
+ $("attClass").value=classId;colorClassSelect();
+ renderAttendance();
+ $("unmarkedBox").open=false;
+ window.scrollTo({top:0,behavior:"smooth"});
 }
 function attendanceDateChanged(){populateSelectors();renderAttendance()}
 function openQuickSession(){showView("attendance");$("attDate").value=today();populateSelectors();renderAttendance()}
@@ -815,6 +881,7 @@ function studentById(id){return db.students.find(s=>s.id===id)}
 // A student is "on the list" for a date unless they were inactive on that date. Past dates before they became inactive still include them.
 function studentActiveOn(id,date){
  const s=studentById(id);if(!s)return false;
+ if(s.joinedFrom&&date<s.joinedFrom)return false; // made regular from a temporary visit: not on lessons before that first visit
  const gaps=Array.isArray(s.gaps)?s.gaps:[];
  if(gaps.some(g=>g.from&&date>=g.from&&(!g.to||date<g.to)))return false;
  if(s.active===false&&!gaps.some(g=>!g.to))return false; // older inactive students with no recorded date
@@ -921,7 +988,7 @@ function attendanceRow(a,classId,date,future=false,simple=false){
  <button ${disabled} class="${a.status==="present"?"selected-present":""}" onclick="setAttendance('${classId}','${date}','${a.studentId||""}','present')">Present</button>
  <button ${disabled} class="${a.status==="absent"?"selected-absent":""}" onclick="setAttendance('${classId}','${date}','${a.studentId||""}','absent')">Absent</button>
  ${!future&&a.status==="absent"?`<button ${disabled} onclick="editReason('${classId}','${date}','${a.studentId||""}')">Reason</button>`:""}
- ${a.temporary?`<button ${disabled} onclick="confirmRemoveTemporary('${classId}','${date}','${a.studentId}')">Remove</button>`:""}
+ ${a.temporary?`<div class="att-more"><button type="button" aria-label="More options" title="More options" onclick="toggleAttMenu(event,this)">&#8943;</button><div class="att-menu"><button type="button" onclick="makeRegular('${classId}','${date}','${a.studentId}')">Make regular student</button><button type="button" class="danger-item" ${disabled} onclick="closeAttMenus();confirmRemoveTemporary('${classId}','${date}','${a.studentId}')">Remove</button></div></div>`:""}
  </div></div>`
 }
 function setAttendance(classId,date,studentId,status){
@@ -954,6 +1021,28 @@ function confirmCancelSession(classId,date,reopen=false){
 }
 function cancelSession(classId,date){let r=getRecord(classId,date);if(!r)return;r.cancelled=true;r.cancelReason=$("cancelReason").value.trim();r.status="cancelled";save();closeModal();renderAttendance();toast("Lesson cancelled")}
 function reopenSession(classId,date){let r=getRecord(classId,date);if(!r)return;r.cancelled=false;r.cancelReason="";r.status=date>today()?"planned":"open";save();closeModal();renderAttendance();toast("Lesson reopened")}
+function closeAttMenus(){document.querySelectorAll(".att-menu.open").forEach(m=>m.classList.remove("open"))}
+function toggleAttMenu(ev,btn){
+ ev.stopPropagation();
+ const m=btn.parentElement.querySelector(".att-menu"),was=m.classList.contains("open");
+ closeAttMenus();if(!was)m.classList.add("open");
+}
+document.addEventListener("click",ev=>{if(!ev.target.closest||!ev.target.closest(".att-more"))closeAttMenus()});
+// Turn a temporary student into a regular one: the normal Add Student form opens with the name filled in.
+function makeRegular(classId,date,tempId){
+ closeAttMenus();
+ const r=getRecord(classId,date),a=r&&r.records.find(x=>x.studentId===tempId&&x.temporary);
+ if(!a)return;
+ openStudent("",{classId,date,tempId,name:a.name||""});
+}
+// Called after the new student is saved: joins the class from the day they first came, and their temporary visit becomes a normal record.
+function finishMakeRegular(st,ctx){
+ const c=db.classes.find(x=>x.id===ctx.classId);
+ st.joinedFrom=ctx.date;
+ if(c){c.studentIds=Array.isArray(c.studentIds)?c.studentIds:[];if(!c.studentIds.includes(st.id))c.studentIds.push(st.id)}
+ const r=getRecord(ctx.classId,ctx.date),a=r&&r.records.find(x=>x.studentId===ctx.tempId&&x.temporary);
+ if(a){a.studentId=st.id;a.temporary=false;delete a.name;if(Array.isArray(r.removedIds))r.removedIds=r.removedIds.filter(x=>x!==st.id)}
+}
 function confirmRemoveTemporary(classId,date,studentId){
  let r=getRecord(classId,date),a=r.records.find(x=>x.studentId===studentId&&x.temporary);
  if(!a)return;
@@ -964,8 +1053,8 @@ function removeTemporary(classId,date,studentId){
  save();closeModal();renderAttendance();toast("Temporary student removed")
 }
 function addTemporary(classId,date){
- let future=date>today();window._tpFuture=future;
- openModal(`<h2>Add temporary student</h2><div class="muted small">This person will be recorded for this session only and will not be added to the class permanently.${future?" This is a future lesson, so attendance can be marked when the lesson happens.":""}</div><label>Name</label><input id="tempName" placeholder="Student name">
+ let future=date>today();window._tpFuture=future;window._tpStarted=lessonHasStarted(classId,date);
+ openModal(`<h2>Add temporary student</h2><div class="muted small">This person will be recorded for this session only and will not be added to the class permanently.${window._tpStarted?" Because the class time has arrived, they will be marked present.":" The class has not started yet, so they will not be marked present."}</div><label>Name</label><input id="tempName" placeholder="Student name">
  <label>Payment</label><select id="tpMethod" onchange="tempPayToggle()"><option value="">Don't mark payment yet</option><option value="Cash">Paid — Cash</option><option value="EFT">Paid — EFT</option><option value="Other">Paid — Other</option><option value="Unpaid">Not paid yet (they owe it)</option></select>
  <div id="tpBox" style="display:none"><label>Drop-in rate</label><select id="dRate" onchange="dropRatePick()"><option value="">Custom amount</option>${db.dropRates.slice().sort(rateSort).map(r=>`<option value="${r.id}">${esc(r.name)} — ${R(r.amount)}</option>`).join("")}</select><label>Amount (R)</label><input id="dAmt" type="number" min="0" step="any"><div class="small muted" style="margin-top:4px">Add or change rates under Payments → Drop-in rates.</div></div>
  <div id="tpNote" class="small muted" style="margin-top:6px">You can mark payment later with the Mark payment button on their row.</div>
@@ -975,7 +1064,7 @@ function addTemporary(classId,date){
 function tempPayToggle(){
  const m=$("tpMethod").value;
  $("tpBox").style.display=m?"block":"none";
- $("tpNote").textContent=(m&&m!=="Unpaid")?(window._tpFuture?"This is a future lesson, so they will be marked present when the lesson happens.":"Because they have paid, they will also be marked present."):"You can mark payment later with the Mark payment button on their row.";
+ $("tpNote").textContent=m?"You can change the payment later with the button on their row.":"You can mark payment later with the Mark payment button on their row.";
 }
 function saveTemporary(classId,date){
  const err=$("tpErr"),bad=m=>{err.textContent=m;err.style.display="block"};
@@ -989,8 +1078,8 @@ function saveTemporary(classId,date){
    if(!(amt>0))return bad("Enter the amount, or choose \"Don't mark payment yet\".");
    const sel=$("dRate"),rate=sel.value?(db.dropRates.find(x=>x.id===sel.value)||{}).name:"Custom";
    na.fee={amount:amt,method:m,rate:rate||"Custom",payer:name};
-   if(m!=="Unpaid"&&date<=today()){na.status="present";present=true} // paid at the door means they are here
- }
+}
+ if(lessonHasStarted(classId,date)&&!r.cancelled){na.status="present";present=true} // added at or after the class time: they are here
  r.records.push(na);save();renderPayments();closeModal();renderAttendance();
  toast(present?"Temporary student added and marked present":"Temporary student added")
 }
@@ -1036,11 +1125,12 @@ function saveSession(classId,date){
  }
  if(marked.length&&!confirm(marked.length+(marked.length===1?" student you are taking off this day has":" students you are taking off this day have")+" attendance marked already. Remove anyway?"))return;
  r.removedIds=Array.isArray(r.removedIds)?r.removedIds:[];
+ const addedRecs=[];
  listed.forEach(id=>{
    const has=r.records.some(a=>a.studentId===id&&!a.temporary);
    if(checked.has(id)){
      r.removedIds=r.removedIds.filter(x=>x!==id);
-     if(!has)r.records.push({studentId:id,status:null,reason:"",temporary:false});
+     if(!has){const na={studentId:id,status:null,reason:"",temporary:false};r.records.push(na);addedRecs.push(na)}
    }else{
      if(has)r.records=r.records.filter(a=>!(a.studentId===id&&!a.temporary));
      if((c.studentIds||[]).includes(id)&&!r.removedIds.includes(id))r.removedIds.push(id);
@@ -1054,6 +1144,7 @@ function saveSession(classId,date){
    if(r.originalDate===newDate)r.originalDate="";
    if(r.status==="planned"||r.status==="open")r.status=newDate>today()?"planned":"open";
  }
+ if(addedRecs.length&&!r.cancelled&&lessonHasStarted(classId,r.date))addedRecs.forEach(a=>{a.status="present"}); // added at or after the class time
  save();closeModal();
  if(newDate!==date)$("attDate").value=newDate;
  populateSelectors();$("attClass").value=classId;colorClassSelect();renderAttendance();
@@ -1081,9 +1172,11 @@ function renderStudentLabelDropdown(programId,selectedIds=[]){
       : '<div class="muted small">No labels for this program yet. Create labels in Programs & Labels.</div>')
    : '<div class="card empty" style="padding:10px">Select program first</div>';
 }
-function openStudent(id=""){
- let s=db.students.find(x=>x.id===id)||{name:"",active:true,notes:"",programId:"",labelIds:[]};
- openModal(`<h2>${id?"Edit":"Add"} Student</h2><label>Name</label><input id="sName" value="${esc(s.name)}" placeholder="Full name" oninput="validateStudentName('${id}',true)"><div id="sNameError" class="field-error" style="display:none"></div><label>Program</label><select id="sProgram" onchange="renderStudentLabelDropdown(this.value,[])"></select><label>Labels</label><div class="small muted">Optional. Select one or more labels from the selected program.</div><div id="studentLabelArea" style="margin-top:7px"></div><label>Status</label><select id="sActive" onchange="inactiveToggle()"><option value="true" ${s.active?"selected":""}>Active</option><option value="false" ${!s.active?"selected":""}>Inactive</option></select><div id="sInactiveBox" style="display:${s.active?"none":"block"}"><label>Inactive since</label><input id="sInactiveSince" type="date" value="${s.inactiveSince||((s.gaps||[]).find(g=>!g.to)||{}).from||""}"><div class="small muted">Leave blank to use today if you are making them inactive now.</div></div><div class="small muted" style="margin-top:4px">Inactive students keep their history, but no longer appear in new attendance or class lists. Set them back to Active when they return.</div>${payFields(s)}<label>Notes</label><textarea id="sNotes" placeholder="Optional">${esc(s.notes||"")}</textarea><div class="actions" style="margin-top:14px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveStudent('${id}')">Save</button></div>`);
+function openStudent(id="",ctx=null){
+ window._regCtx=(!id&&ctx)?ctx:null;
+ let s=db.students.find(x=>x.id===id)||{name:(ctx&&ctx.name)||"",active:true,notes:"",programId:"",labelIds:[]};
+ const regNote=window._regCtx?(()=>{const c=db.classes.find(x=>x.id===ctx.classId);return `<div class="small muted" style="margin-bottom:6px">Making them a regular student of <b>${esc(c?c.name:"the class")}</b> from ${esc(fmt(ctx.date))}. They will not appear on earlier lessons.</div>`})():"";
+ openModal(`<h2>${id?"Edit":window._regCtx?"Make regular":"Add"} Student</h2>${regNote}<label>Name</label><input id="sName" value="${esc(s.name)}" placeholder="Full name" oninput="validateStudentName('${id}',true)"><div id="sNameError" class="field-error" style="display:none"></div><label>Program</label><select id="sProgram" onchange="renderStudentLabelDropdown(this.value,[])"></select><label>Labels</label><div class="small muted">Optional. Select one or more labels from the selected program.</div><div id="studentLabelArea" style="margin-top:7px"></div><label>Status</label><select id="sActive" onchange="inactiveToggle()"><option value="true" ${s.active?"selected":""}>Active</option><option value="false" ${!s.active?"selected":""}>Inactive</option></select><div id="sInactiveBox" style="display:${s.active?"none":"block"}"><label>Inactive since</label><input id="sInactiveSince" type="date" value="${s.inactiveSince||((s.gaps||[]).find(g=>!g.to)||{}).from||""}"><div class="small muted">Leave blank to use today if you are making them inactive now.</div></div><div class="small muted" style="margin-top:4px">Inactive students keep their history, but no longer appear in new attendance or class lists. Set them back to Active when they return.</div>${payFields(s)}<label>Notes</label><textarea id="sNotes" placeholder="Optional">${esc(s.notes||"")}</textarea><div class="actions" style="margin-top:14px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveStudent('${id}')">Save</button></div>`);
  populateProgramSelect("sProgram",s.programId,false);renderStudentLabelDropdown(s.programId,s.labelIds||[]);studentFormInit();
 }
 function setFieldError(inputId,errId,msg){
@@ -1114,8 +1207,9 @@ function saveStudent(id){
  const pf=payFieldsRead(name);if(pf.error){alert(pf.error);return}
  let obj={name,active:nowActive,notes:$("sNotes").value,programId,labelIds,...pf};
  let st=id?db.students.find(x=>x.id===id):null,wasActive=st?st.active!==false:true,msg="Student saved";
+ const regCtx=(!id&&window._regCtx)||null;window._regCtx=null;
  {const iv=$("sInactiveSince")?.value;obj.inactiveSince=nowActive?"":(iv||(st&&st.inactiveSince)||(wasActive?today():""))}
- if(st){Object.assign(st,obj)}else{st={id:uid(),...obj};db.students.push(st)}
+ if(st){Object.assign(st,obj)}else{st={id:uid(),...obj};db.students.push(st);if(regCtx){finishMakeRegular(st,regCtx);msg="Student added and made a regular of the class"}}
  if(wasActive&&!nowActive){
    st.gaps=Array.isArray(st.gaps)?st.gaps:[];
    if(!st.gaps.some(g=>!g.to))st.gaps.push({id:uid(),from:today(),to:""});
@@ -1212,7 +1306,7 @@ function openClass(id=""){
  let ctype=classType(c);
  let activeStudents=db.students.filter(s=>s.active);
  let opts=activeStudents.map(s=>`<label class="class-student-row" data-student-name="${esc(s.name.toLowerCase())}" data-program-id="${esc(s.programId||"")}" data-label-ids="${esc((s.labelIds||[]).join(","))}"><input class="classStudent" type="checkbox" value="${s.id}" ${c.studentIds.includes(s.id)?"checked":""} onchange="updateClassStudentCount()"> <span>${esc(s.name)}</span></label>`).join("")||'<div class="muted small">Add active students first.</div>';
- openModal(`<h2>${id?"Edit":"Add"} Class</h2><label>Class name</label><input id="cName" value="${esc(c.name)}" placeholder="e.g. Private Lesson" oninput="classFieldError('name','')"><div id="cNameError" class="field-error" style="display:none"></div><label>Class type</label><select id="cType" onchange="toggleClassType()"><option value="recurring" ${ctype!=="once"?"selected":""}>Recurring (repeats every week)</option><option value="once" ${ctype==="once"?"selected":""}>Once-off (a single date)</option></select><div class="grid two"><div><label>Program</label><select id="cProgram" onchange="refreshClassStudentFilters()"></select></div><div><label>Time</label><input id="cTime" type="time" value="${esc(c.time)}"></div></div><div id="cDaysWrap" style="display:${ctype==='once'?'none':'block'}"><label>Days</label><div id="cDays" class="day-checks">${["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map(x=>`<label class="day-check"><input type="checkbox" class="classDay" value="${x}" ${days.includes(x)?"checked":""} onchange="classFieldError('days','')"> <span>${x}</span></label>`).join("")}</div><div id="cDaysError" class="field-error" style="display:none"></div><label>Starts on</label><input id="cStart" type="date" value="${esc(id?(c.scheduleFrom||c.startDate||""):today())}"><div class="small muted" style="margin-top:4px">New class: it appears in attendance from this date. Editing the days: the new days start on this date and earlier dates keep the old days.</div></div><div id="cDateWrap" style="display:${ctype==='once'?'block':'none'}"><label>Date</label><input id="cDate" type="date" value="${esc(c.date||"")}" oninput="classFieldError('date','')" onchange="classFieldError('date','')"><div id="cDateError" class="field-error" style="display:none"></div></div><label>Default student list</label><select id="cListMode" onchange="toggleClassLabelMode()"><option value="manual" ${c.listMode!=="label"?"selected":""}>Manual Student List</option><option value="label" ${c.listMode==="label"?"selected":""}>Label Default List</option></select><div id="classLabelMode" style="display:${c.listMode==="label"?"block":"none"}"><label>Default label</label><select id="cDefaultLabel" onchange="applyDefaultLabel()"></select><div class="small muted" style="margin-top:5px">Students with this label are automatically included, and you can still edit the list below.</div></div><label>Find students</label><div class="class-filter-row"><input id="classStudentSearch" placeholder="Search students..." oninput="filterClassStudents()"><select id="classStudentProgramFilter" onchange="filterClassStudents()"></select><select id="classStudentLabelFilter" onchange="filterClassStudents()"></select></div><div id="classStudentList" class="class-student-list">${opts}</div><div id="classStudentCount" class="small muted" style="margin-top:7px">${activeClassStudentIds(c).length} selected</div><label>Notes</label><textarea id="cNotes">${esc(c.notes||"")}</textarea><div class="actions" style="margin-top:14px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveClass('${id}')">Save Class</button></div>`);
+ openModal(`<h2>${id?"Edit":"Add"} Class</h2><label>Class name</label><input id="cName" value="${esc(c.name)}" placeholder="e.g. Private Lesson" oninput="classFieldError('name','')"><div id="cNameError" class="field-error" style="display:none"></div><label>Class type</label><select id="cType" onchange="toggleClassType()"><option value="recurring" ${ctype!=="once"?"selected":""}>Recurring (repeats every week)</option><option value="once" ${ctype==="once"?"selected":""}>Once-off (a single date)</option></select><div class="grid two"><div><label>Program</label><select id="cProgram" onchange="refreshClassStudentFilters()"></select></div><div><label>Time</label><input id="cTime" type="time" value="${esc(c.time)}"></div></div><div id="cDaysWrap" style="display:${ctype==='once'?'none':'block'}"><label>Days</label><div id="cDays" class="day-checks">${["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map(x=>`<label class="day-check"><input type="checkbox" class="classDay" value="${x}" ${days.includes(x)?"checked":""} onchange="classFieldError('days','')"> <span>${x}</span></label>`).join("")}</div><div id="cDaysError" class="field-error" style="display:none"></div><label>${id?"Effective from":"Starts on"}</label><input id="cStart" type="date" value="${esc(today())}" data-def="${esc(today())}"><div class="small muted" style="margin-top:4px">${id?"If you change the days, the new days start on this date and earlier dates keep the old days. Leave it as today if you are not changing the days.":"The class appears in attendance from this date."}</div></div><div id="cDateWrap" style="display:${ctype==='once'?'block':'none'}"><label>Date</label><input id="cDate" type="date" value="${esc(c.date||"")}" oninput="classFieldError('date','')" onchange="classFieldError('date','')"><div id="cDateError" class="field-error" style="display:none"></div></div><label>Default student list</label><select id="cListMode" onchange="toggleClassLabelMode()"><option value="manual" ${c.listMode!=="label"?"selected":""}>Manual Student List</option><option value="label" ${c.listMode==="label"?"selected":""}>Label Default List</option></select><div id="classLabelMode" style="display:${c.listMode==="label"?"block":"none"}"><label>Default label</label><select id="cDefaultLabel" onchange="applyDefaultLabel()"></select><div class="small muted" style="margin-top:5px">Students with this label are automatically included, and you can still edit the list below.</div></div><label>Find students</label><div class="class-filter-row"><input id="classStudentSearch" placeholder="Search students..." oninput="filterClassStudents()"><select id="classStudentProgramFilter" onchange="filterClassStudents()"></select><select id="classStudentLabelFilter" onchange="filterClassStudents()"></select></div><div id="classStudentList" class="class-student-list">${opts}</div><div id="classStudentCount" class="small muted" style="margin-top:7px">${activeClassStudentIds(c).length} selected</div><label>Notes</label><textarea id="cNotes">${esc(c.notes||"")}</textarea><div class="actions" style="margin-top:14px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveClass('${id}')">Save Class</button></div>`);
  populateProgramSelect("cProgram",c.programId,false);populateProgramSelect("classStudentProgramFilter",c.programId,true);populateLabelSelect("classStudentLabelFilter","",true,c.programId);populateLabelSelect("cDefaultLabel",c.defaultLabelId,false,c.programId);refreshClassStudentFilters();if(c.listMode==="label")applyDefaultLabel();else updateClassStudentCount();
 }
 function toggleClassType(){["name","days","date"].forEach(k=>classFieldError(k,""));let once=$("cType").value==="once";$("cDaysWrap").style.display=once?"none":"block";$("cDateWrap").style.display=once?"block":"none"}
@@ -1230,7 +1324,7 @@ function saveClass(id){
  else{days=[...document.querySelectorAll(".classDay:checked")].map(x=>x.value);if(!days.length){classFieldError("days","Select at least one day.");bad=true}}
  if(bad){const first=document.querySelector("#modalBody .input-error");if(first){if(first.scrollIntoView)first.scrollIntoView({block:"center"});if(first.focus&&first.tagName==="INPUT")first.focus()}return}
  let studentIds=[...document.querySelectorAll(".classStudent:checked")].map(x=>x.value);if(id){const old=db.classes.find(x=>x.id===id);((old&&old.studentIds)||[]).forEach(sid=>{const st=studentById(sid);if(st&&st.active===false&&!studentIds.includes(sid))studentIds.push(sid)})} // inactive students stay on the class for when they return
- let obj={name,type,date,startDate:type==="recurring"?($("cStart").value||""):"",days,day:days[0]||"",time:$("cTime").value,studentIds,notes:$("cNotes").value,programId:$("cProgram").value,listMode:$("cListMode").value,defaultLabelId:$("cDefaultLabel").value};let cls;if(id){cls=db.classes.find(x=>x.id===id);if(type==="recurring"&&classType(cls)==="recurring")Object.assign(obj,scheduleEdit(cls,days,obj.startDate));Object.assign(cls,obj)}else{cls={id:uid(),...obj};db.classes.push(cls)}pruneEmptySessions(cls);save();closeModal();populateSelectors();renderClasses();renderAttendance();toast("Class saved")}
+ let obj={name,type,date,startDate:type==="recurring"?($("cStart").value||""):"",days,day:days[0]||"",time:$("cTime").value,studentIds,notes:$("cNotes").value,programId:$("cProgram").value,listMode:$("cListMode").value,defaultLabelId:$("cDefaultLabel").value};let cls;if(id){cls=db.classes.find(x=>x.id===id);if(type==="recurring"&&classType(cls)==="recurring")Object.assign(obj,scheduleEdit(cls,days,obj.startDate,$("cStart").value!==$("cStart").dataset.def));Object.assign(cls,obj)}else{cls={id:uid(),...obj};db.classes.push(cls)}pruneEmptySessions(cls);save();closeModal();populateSelectors();renderClasses();renderAttendance();toast("Class saved")}
 function pauseClass(id){
  const c=db.classes.find(x=>x.id===id);if(!c||classType(c)==="once")return;
  const p=currentPause(c),t=today(),active=!!p&&p.from<=t;
@@ -1312,7 +1406,7 @@ function classProfile(id){
  let when=once?(c.date?fmtClassDate(c.date)+(c.date<today()?" (past)":""):"No date set"):(classDaysList(c).length?"Every "+classDaysList(c).join(", "):"No days set");
  openModal(`<div class="row"><div><h2>${esc(c.name)}</h2><div style="margin-top:6px">${classTypeBadge(c)} ${p?`<span class="badge pending">${esc(p.name)}</span>`:""} ${c.listMode==="label"&&label?`<span class="badge present">Label: ${esc(label.name)}</span>`:""}</div></div>${paused?"":`<button class="btn" onclick="closeModal();openClass('${id}')">Edit</button>`}</div>
  <div class="grid two" style="margin:14px 0"><div class="card"><div class="stat-label">Class type</div><div><b>${once?"Once-off":"Recurring"}</b></div></div><div class="card"><div class="stat-label">${once?"Date":"Days"}</div><div><b>${esc(when)}</b></div></div><div class="card"><div class="stat-label">Time</div><div><b>${c.time?esc(c.time):"Not set"}</b></div></div><div class="card"><div class="stat-label">Sessions recorded</div><div><b>${sessions.length}</b>${last?` <span class="small muted">· last ${esc(fmtClassDate(last))}</span>`:""}</div></div></div>
- ${once?"":`<div class="small muted" style="margin-bottom:10px">${[c.startDate?"Starts on "+esc(fmtClassDate(c.startDate)):"",esc(pauseText(c))].filter(Boolean).join(" · ")}</div>`}<h3>Default students (${names.length})</h3><div class="small muted" style="margin:4px 0 12px">${names.map(esc).join(", ")||"No students assigned yet."}</div>
+ ${once?"":`<div class="small muted" style="margin-bottom:10px">${[c.startDate?(c.startDate>today()?"Starts on ":"Started ")+esc(fmtClassDate(c.startDate)):"",c.scheduleFrom?"Current days since "+esc(fmtClassDate(c.scheduleFrom)):"",esc(pauseText(c))].filter(Boolean).join(" · ")}</div>`}<h3>Default students (${names.length})</h3><div class="small muted" style="margin:4px 0 12px">${names.map(esc).join(", ")||"No students assigned yet."}</div>
  ${c.notes?`<h3>Notes</h3><div class="small muted" style="margin:4px 0 12px">${esc(c.notes)}</div>`:""}
  <div class="actions" style="margin-top:14px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Close</button>${paused?"":`<button class="btn primary" onclick="closeModal();openClassAttendance('${id}')">Take Attendance</button>`}</div>`);
 }
@@ -2137,7 +2231,7 @@ function mpSave(){
    const hit=db.dropRates.find(x=>Math.abs(Number(x.amount)-amount)<0.005);
    const rate=f==="perclass"?((s&&s.rateName)||"Per class"):(hit?hit.name:"Custom");
    a.fee={amount,method,rate,payer:sc.name};if(reason)a.fee.reason=reason;delete a.free;
-   if(a.temporary&&f==="dropin"&&!a.status&&tg.date<=today()){a.status="present";toast("Payment saved — marked present")}else toast("Payment saved");
+   if(a.temporary&&f==="dropin"&&!a.status&&lessonHasStarted(tg.classId,tg.date)){a.status="present";toast("Payment saved — marked present")}else toast("Payment saved");
  }
  save();closeModal();
  if($("attClass"))renderAttendance();
