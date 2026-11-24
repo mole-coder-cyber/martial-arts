@@ -113,7 +113,7 @@ dialog{border:0;border-radius:13px;padding:0;width:min(560px,calc(100% - 24px));
 <div id="app" class="app hidden">
 <div id="demoBanner" class="demo-banner hidden"><span>DEMO MODE: this is a copy of the real data. Use anything you like, nothing is saved and it all resets when you reload.</span><button onclick="location.reload()">Reset now</button></div>
 <header>
-  <div class="brand">Martial Arts App <small>Attendance &amp; Payments · v2026-11-20-ma</small></div>
+  <div class="brand">Martial Arts App <small>Attendance &amp; Payments · v2026-11-21-ma</small></div>
   <div class="header-actions">
     <span id="syncBadge" class="sync-badge"></span>
     <span id="statusText" class="status-text" aria-live="polite"></span>
@@ -810,7 +810,27 @@ function lessonHasStarted(classId,date){
  if(m===9999)return true;
  const n=new Date();return n.getHours()*60+n.getMinutes()>=m;
 }
-function sessionTime(c,date){const r=getRecord(c.id,date);return (r&&r.time)||c.time||""}
+// The class time that applied on a date: the current time from timeFrom onwards, earlier periods come from pastTimes
+function classTimeOn(c,date){
+ if(c.timeFrom&&date<c.timeFrom){
+  const pt=c.pastTimes||[],p=pt.find(x=>date>=(x.from||"")&&date<x.until);
+  return p?p.time:(pt[0]?pt[0].time:(c.time||""));
+ }
+ return c.time||"";
+}
+// Works out the dates when a recurring class's time is edited: the new time only applies from newDate onwards.
+function timeEdit(cls,newTime,newDate){
+ const oldTime=cls.time||"",oldFrom=cls.timeFrom||cls.startDate||"",past=(cls.pastTimes||[]).map(x=>({...x}));
+ if((newTime||"")===oldTime)return{timeFrom:cls.timeFrom||"",pastTimes:past};
+ if(!newDate)newDate=today();
+ if(newDate>oldFrom)return{timeFrom:newDate,pastTimes:past.concat([{from:oldFrom,until:newDate,time:oldTime}])};
+ const trimmed=past.filter(x=>(x.from||"")<newDate);
+ trimmed.forEach(x=>{if(!x.until||x.until>newDate)x.until=newDate});
+ if(!trimmed.length)return{timeFrom:"",pastTimes:[]};
+ trimmed[trimmed.length-1].until=newDate;
+ return{timeFrom:newDate,pastTimes:trimmed};
+}
+function sessionTime(c,date){const r=getRecord(c.id,date);return (r&&r.time)||classTimeOn(c,date)}
 function sessionState(c,date){const r=getRecord(c.id,date);if(r&&r.cancelled)return"cancelled";if(r&&r.status==="completed")return"done";return"todo"}
 function colorClassSelect(){
  const c=$("attClass"),o=c.options[c.selectedIndex],st=o&&o.getAttribute("data-state");
@@ -841,19 +861,14 @@ function populateSelectors(){
  updateAttDateNote(date,classes);
  renderUnmarked();
 }
+const UNMARKED_FROM="2026-10-01"; // the day the app was first used: nothing earlier is ever listed
 function unmarkedSessions(){
- const t=today(),n=new Date(),nowM=n.getHours()*60+n.getMinutes(),out=[],dates=[];
- db.attendance.forEach(r=>{if(r.date)dates.push(r.date)});
- db.classes.forEach(c=>{const d=classType(c)==="once"?c.date:(c.startDate||"");if(d)dates.push(d)});
- if(!dates.length)return out;
- let from=dates.reduce((a,b)=>a<b?a:b);const cap=mpDaysAgo(90);if(from<cap)from=cap;
- const d=new Date(from+"T12:00:00");
+ const t=today(),n=new Date(),nowM=n.getHours()*60+n.getMinutes(),out=[];
+ const d=new Date(UNMARKED_FROM+"T12:00:00");
  for(let ds=localDateStr(d);ds<=t;d.setDate(d.getDate()+1),ds=localDateStr(d)){
   classesForDate(ds).forEach(c=>{
    if(sessionState(c,ds)!=="todo")return;
    if(ds===t){const m=classTimeMinutes(sessionTime(c,ds));if(m!==9999&&nowM<m)return}
-   const r=getRecord(c.id,ds),count=r?r.records.length:(c.studentIds||[]).filter(id=>studentActiveOn(id,ds)).length;
-   if(!count)return;
    out.push({c,date:ds,m:classTimeMinutes(sessionTime(c,ds))});
   });
  }
@@ -886,6 +901,12 @@ function studentActiveOn(id,date){
  if(gaps.some(g=>g.from&&date>=g.from&&(!g.to||date<g.to)))return false;
  if(s.active===false&&!gaps.some(g=>!g.to))return false; // older inactive students with no recorded date
  return true;
+}
+// Is this student on this class's list on this date? (new students only appear from the date they joined the class)
+function studentOnClassOn(c,id,date){
+ if(!studentActiveOn(id,date))return false;
+ const f=c.studentFrom&&c.studentFrom[id];
+ return !(f&&date<f);
 }
 function activeClassStudentIds(c){return (c.studentIds||[]).filter(id=>{const s=studentById(id);return s&&s.active!==false})}
 function removeStudentFromUpcomingLessons(id,fromDate){
@@ -923,7 +944,7 @@ function ensureRecord(classId,date){
  let c=db.classes.find(x=>x.id===classId);if(!c)return null;
  let r=getRecord(classId,date);
  if(!r){
-   r={id:uid(),classId,date,className:c.name,status:date>today()?"planned":"open",cancelled:false,cancelReason:"",records:c.studentIds.filter(studentId=>studentActiveOn(studentId,date)).map(studentId=>({studentId,status:null,reason:"",temporary:false}))};
+   r={id:uid(),classId,date,className:c.name,status:date>today()?"planned":"open",cancelled:false,cancelReason:"",records:c.studentIds.filter(studentId=>studentOnClassOn(c,studentId,date)).map(studentId=>({studentId,status:null,reason:"",temporary:false}))};
    db.attendance.push(r);save();
    return r;
  }
@@ -932,7 +953,7 @@ function ensureRecord(classId,date){
  let changed=false;
  c.studentIds.forEach(studentId=>{
    if((r.removedIds||[]).includes(studentId))return; // taken off this day's list on purpose
-   if(!studentActiveOn(studentId,date))return; // inactive on this day
+   if(!studentOnClassOn(c,studentId,date))return; // inactive on this day, or not yet on this class
    if(!r.records.some(a=>a.studentId===studentId)){
      r.records.push({studentId,status:null,reason:"",temporary:false});
      changed=true;
@@ -1038,8 +1059,7 @@ function makeRegular(classId,date,tempId){
 // Called after the new student is saved: joins the class from the day they first came, and their temporary visit becomes a normal record.
 function finishMakeRegular(st,ctx){
  const c=db.classes.find(x=>x.id===ctx.classId);
- st.joinedFrom=ctx.date;
- if(c){c.studentIds=Array.isArray(c.studentIds)?c.studentIds:[];if(!c.studentIds.includes(st.id))c.studentIds.push(st.id)}
+ if(c){c.studentIds=Array.isArray(c.studentIds)?c.studentIds:[];if(!c.studentIds.includes(st.id))c.studentIds.push(st.id);c.studentFrom=(c.studentFrom&&typeof c.studentFrom==="object")?c.studentFrom:{};c.studentFrom[st.id]=ctx.date}
  const r=getRecord(ctx.classId,ctx.date),a=r&&r.records.find(x=>x.studentId===ctx.tempId&&x.temporary);
  if(a){a.studentId=st.id;a.temporary=false;delete a.name;if(Array.isArray(r.removedIds))r.removedIds=r.removedIds.filter(x=>x!==st.id)}
 }
@@ -1090,7 +1110,7 @@ function editSession(classId,date){
  const completed=r.status==="completed";
  const opts=list.map(s=>`<label class="class-student-row" data-student-name="${esc(String(s.name).toLowerCase())}" data-program-id="${esc(s.programId||"")}" data-label-ids="${esc((s.labelIds||[]).join(","))}"><input class="seStudent" type="checkbox" value="${s.id}" ${inSession.has(s.id)?"checked":""} onchange="updateSessionCount()"> <span>${esc(s.name)}</span></label>`).join("");
  openModal(`<h2>Edit this day</h2><div class="muted small">${esc(c.name)} · ${esc(fmt(date))}. Changes here only apply to this day, not to the class itself.</div>
- <div class="grid two" style="margin-top:10px"><div><label>Time</label><input id="seTime" type="time" value="${esc(r.time||c.time||"")}"></div><div><label>Day (date)</label><input id="seDate" type="date" value="${esc(date)}" ${completed?"disabled":""} oninput="setFieldError('seDate','seDateError','')" onchange="setFieldError('seDate','seDateError','')"><div id="seDateError" class="field-error" style="display:none"></div></div></div>
+ <div class="grid two" style="margin-top:10px"><div><label>Time</label><input id="seTime" type="time" value="${esc(r.time||classTimeOn(c,date))}"></div><div><label>Day (date)</label><input id="seDate" type="date" value="${esc(date)}" ${completed?"disabled":""} oninput="setFieldError('seDate','seDateError','')" onchange="setFieldError('seDate','seDateError','')"><div id="seDateError" class="field-error" style="display:none"></div></div></div>
  ${completed?`<div class="small muted" style="margin-top:4px">To move this lesson to another day, reopen the attendance first.</div>`:""}
  <label>Find students</label><div class="class-filter-row"><input id="seSearch" placeholder="Search students..." oninput="filterSessionStudents()"><select id="seProgramFilter" onchange="seProgramFilterChanged()"></select><select id="seLabelFilter" onchange="filterSessionStudents()"></select></div>
  <div id="seStudents" class="class-student-list">${opts||`<div class="small muted">No students yet.</div>`}</div>
@@ -1136,7 +1156,7 @@ function saveSession(classId,date){
      if((c.studentIds||[]).includes(id)&&!r.removedIds.includes(id))r.removedIds.push(id);
    }
  });
- r.time=(time&&time!==(c.time||""))?time:"";
+ r.time=(time&&time!==classTimeOn(c,newDate))?time:"";
  r.notes=notes;
  if(newDate!==date){
    if(!r.originalDate)r.originalDate=date;
@@ -1306,7 +1326,7 @@ function openClass(id=""){
  let ctype=classType(c);
  let activeStudents=db.students.filter(s=>s.active);
  let opts=activeStudents.map(s=>`<label class="class-student-row" data-student-name="${esc(s.name.toLowerCase())}" data-program-id="${esc(s.programId||"")}" data-label-ids="${esc((s.labelIds||[]).join(","))}"><input class="classStudent" type="checkbox" value="${s.id}" ${c.studentIds.includes(s.id)?"checked":""} onchange="updateClassStudentCount()"> <span>${esc(s.name)}</span></label>`).join("")||'<div class="muted small">Add active students first.</div>';
- openModal(`<h2>${id?"Edit":"Add"} Class</h2><label>Class name</label><input id="cName" value="${esc(c.name)}" placeholder="e.g. Private Lesson" oninput="classFieldError('name','')"><div id="cNameError" class="field-error" style="display:none"></div><label>Class type</label><select id="cType" onchange="toggleClassType()"><option value="recurring" ${ctype!=="once"?"selected":""}>Recurring (repeats every week)</option><option value="once" ${ctype==="once"?"selected":""}>Once-off (a single date)</option></select><div class="grid two"><div><label>Program</label><select id="cProgram" onchange="refreshClassStudentFilters()"></select></div><div><label>Time</label><input id="cTime" type="time" value="${esc(c.time)}"></div></div><div id="cDaysWrap" style="display:${ctype==='once'?'none':'block'}"><label>Days</label><div id="cDays" class="day-checks">${["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map(x=>`<label class="day-check"><input type="checkbox" class="classDay" value="${x}" ${days.includes(x)?"checked":""} onchange="classFieldError('days','')"> <span>${x}</span></label>`).join("")}</div><div id="cDaysError" class="field-error" style="display:none"></div><label>${id?"Effective from":"Starts on"}</label><input id="cStart" type="date" value="${esc(today())}" data-def="${esc(today())}"><div class="small muted" style="margin-top:4px">${id?"If you change the days, the new days start on this date and earlier dates keep the old days. Leave it as today if you are not changing the days.":"The class appears in attendance from this date."}</div></div><div id="cDateWrap" style="display:${ctype==='once'?'block':'none'}"><label>Date</label><input id="cDate" type="date" value="${esc(c.date||"")}" oninput="classFieldError('date','')" onchange="classFieldError('date','')"><div id="cDateError" class="field-error" style="display:none"></div></div><label>Default student list</label><select id="cListMode" onchange="toggleClassLabelMode()"><option value="manual" ${c.listMode!=="label"?"selected":""}>Manual Student List</option><option value="label" ${c.listMode==="label"?"selected":""}>Label Default List</option></select><div id="classLabelMode" style="display:${c.listMode==="label"?"block":"none"}"><label>Default label</label><select id="cDefaultLabel" onchange="applyDefaultLabel()"></select><div class="small muted" style="margin-top:5px">Students with this label are automatically included, and you can still edit the list below.</div></div><label>Find students</label><div class="class-filter-row"><input id="classStudentSearch" placeholder="Search students..." oninput="filterClassStudents()"><select id="classStudentProgramFilter" onchange="filterClassStudents()"></select><select id="classStudentLabelFilter" onchange="filterClassStudents()"></select></div><div id="classStudentList" class="class-student-list">${opts}</div><div id="classStudentCount" class="small muted" style="margin-top:7px">${activeClassStudentIds(c).length} selected</div><label>Notes</label><textarea id="cNotes">${esc(c.notes||"")}</textarea><div class="actions" style="margin-top:14px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveClass('${id}')">Save Class</button></div>`);
+ openModal(`<h2>${id?"Edit":"Add"} Class</h2><label>Class name</label><input id="cName" value="${esc(c.name)}" placeholder="e.g. Private Lesson" oninput="classFieldError('name','')"><div id="cNameError" class="field-error" style="display:none"></div><label>Class type</label><select id="cType" onchange="toggleClassType()"><option value="recurring" ${ctype!=="once"?"selected":""}>Recurring (repeats every week)</option><option value="once" ${ctype==="once"?"selected":""}>Once-off (a single date)</option></select><div class="grid two"><div><label>Program</label><select id="cProgram" onchange="refreshClassStudentFilters()"></select></div><div><label>Time</label><input id="cTime" type="time" value="${esc(c.time)}"></div></div><div id="cDaysWrap" style="display:${ctype==='once'?'none':'block'}"><label>Days</label><div id="cDays" class="day-checks">${["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map(x=>`<label class="day-check"><input type="checkbox" class="classDay" value="${x}" ${days.includes(x)?"checked":""} onchange="classFieldError('days','')"> <span>${x}</span></label>`).join("")}</div><div id="cDaysError" class="field-error" style="display:none"></div><label>${id?"Effective from":"Starts on"}</label><input id="cStart" type="date" value="${esc(today())}" data-def="${esc(today())}"><div class="small muted" style="margin-top:4px">${id?"A change of days, time or new students starts on this date. Earlier dates keep the old days and time, and new students do not appear before it. Leave it as today if the change starts today.":"The class appears in attendance from this date."}</div></div><div id="cDateWrap" style="display:${ctype==='once'?'block':'none'}"><label>Date</label><input id="cDate" type="date" value="${esc(c.date||"")}" oninput="classFieldError('date','')" onchange="classFieldError('date','')"><div id="cDateError" class="field-error" style="display:none"></div></div><label>Default student list</label><select id="cListMode" onchange="toggleClassLabelMode()"><option value="manual" ${c.listMode!=="label"?"selected":""}>Manual Student List</option><option value="label" ${c.listMode==="label"?"selected":""}>Label Default List</option></select><div id="classLabelMode" style="display:${c.listMode==="label"?"block":"none"}"><label>Default label</label><select id="cDefaultLabel" onchange="applyDefaultLabel()"></select><div class="small muted" style="margin-top:5px">Students with this label are automatically included, and you can still edit the list below.</div></div><label>Find students</label><div class="class-filter-row"><input id="classStudentSearch" placeholder="Search students..." oninput="filterClassStudents()"><select id="classStudentProgramFilter" onchange="filterClassStudents()"></select><select id="classStudentLabelFilter" onchange="filterClassStudents()"></select></div><div id="classStudentList" class="class-student-list">${opts}</div><div id="classStudentCount" class="small muted" style="margin-top:7px">${activeClassStudentIds(c).length} selected</div><label>Notes</label><textarea id="cNotes">${esc(c.notes||"")}</textarea><div class="actions" style="margin-top:14px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveClass('${id}')">Save Class</button></div>`);
  populateProgramSelect("cProgram",c.programId,false);populateProgramSelect("classStudentProgramFilter",c.programId,true);populateLabelSelect("classStudentLabelFilter","",true,c.programId);populateLabelSelect("cDefaultLabel",c.defaultLabelId,false,c.programId);refreshClassStudentFilters();if(c.listMode==="label")applyDefaultLabel();else updateClassStudentCount();
 }
 function toggleClassType(){["name","days","date"].forEach(k=>classFieldError(k,""));let once=$("cType").value==="once";$("cDaysWrap").style.display=once?"none":"block";$("cDateWrap").style.display=once?"block":"none"}
@@ -1324,7 +1344,15 @@ function saveClass(id){
  else{days=[...document.querySelectorAll(".classDay:checked")].map(x=>x.value);if(!days.length){classFieldError("days","Select at least one day.");bad=true}}
  if(bad){const first=document.querySelector("#modalBody .input-error");if(first){if(first.scrollIntoView)first.scrollIntoView({block:"center"});if(first.focus&&first.tagName==="INPUT")first.focus()}return}
  let studentIds=[...document.querySelectorAll(".classStudent:checked")].map(x=>x.value);if(id){const old=db.classes.find(x=>x.id===id);((old&&old.studentIds)||[]).forEach(sid=>{const st=studentById(sid);if(st&&st.active===false&&!studentIds.includes(sid))studentIds.push(sid)})} // inactive students stay on the class for when they return
- let obj={name,type,date,startDate:type==="recurring"?($("cStart").value||""):"",days,day:days[0]||"",time:$("cTime").value,studentIds,notes:$("cNotes").value,programId:$("cProgram").value,listMode:$("cListMode").value,defaultLabelId:$("cDefaultLabel").value};let cls;if(id){cls=db.classes.find(x=>x.id===id);if(type==="recurring"&&classType(cls)==="recurring")Object.assign(obj,scheduleEdit(cls,days,obj.startDate,$("cStart").value!==$("cStart").dataset.def));Object.assign(cls,obj)}else{cls={id:uid(),...obj};db.classes.push(cls)}pruneEmptySessions(cls);save();closeModal();populateSelectors();renderClasses();renderAttendance();toast("Class saved")}
+ let obj={name,type,date,startDate:type==="recurring"?($("cStart").value||""):"",days,day:days[0]||"",time:$("cTime").value,studentIds,notes:$("cNotes").value,programId:$("cProgram").value,listMode:$("cListMode").value,defaultLabelId:$("cDefaultLabel").value};let cls;if(id){cls=db.classes.find(x=>x.id===id);const eff=$("cStart").value||today(),wasRec=type==="recurring"&&classType(cls)==="recurring",oldIds=(cls.studentIds||[]).slice();
+ if(wasRec){Object.assign(obj,scheduleEdit(cls,days,obj.startDate,$("cStart").value!==$("cStart").dataset.def));Object.assign(obj,timeEdit(cls,obj.time,eff))}
+ Object.assign(cls,obj);
+ if(wasRec){ // students added now only appear from the effective date; earlier unmarked lessons lose them
+  cls.studentFrom=(cls.studentFrom&&typeof cls.studentFrom==="object")?cls.studentFrom:{};
+  studentIds.forEach(sid=>{if(oldIds.includes(sid))return;cls.studentFrom[sid]=eff;db.attendance.forEach(r=>{if(r.classId===cls.id&&r.date<eff&&r.status!=="completed"&&!r.cancelled)r.records=r.records.filter(a=>!(a.studentId===sid&&!a.temporary&&!a.status))})});
+  Object.keys(cls.studentFrom).forEach(k=>{if(!studentIds.includes(k))delete cls.studentFrom[k]});
+ }
+}else{cls={id:uid(),...obj};db.classes.push(cls)}pruneEmptySessions(cls);save();closeModal();populateSelectors();renderClasses();renderAttendance();toast("Class saved")}
 function pauseClass(id){
  const c=db.classes.find(x=>x.id===id);if(!c||classType(c)==="once")return;
  const p=currentPause(c),t=today(),active=!!p&&p.from<=t;
@@ -1506,7 +1534,7 @@ function renderHistoryMonth(){
    const date=`${month}-${String(d).padStart(2,"0")}`,st=daySessionState(c,date),r=st.r;
    if(st.cls==="held")held++;else if(st.cls==="cancelled")cancelled++;else if(st.cls==="open")open++;
    if(r&&r.notes)notes.push({date,text:r.notes});
-   const time=(r&&r.time)||(st.cls&&st.cls!=="paused"?c.time:"");
+   const time=(r&&r.time)||(st.cls&&st.cls!=="paused"?classTimeOn(c,date):"");
    const clickable=!!st.cls&&st.cls!=="paused";
    cells+=`<div class="cal-d ${st.cls} ${clickable?"click":""} ${date===t?"today":""}" ${clickable?`onclick="historyDayDetails('${c.id}','${date}')"`:""}><b>${d}</b>${r&&r.notes?'<i class="cal-note" title="Has notes">✎</i>':""}${st.label?`<span>${st.label}</span>`:""}${time&&clickable?`<span>${esc(time)}</span>`:""}</div>`;
  }
@@ -1519,7 +1547,7 @@ function historyDayDetails(cid,date){
  const c=db.classes.find(x=>x.id===cid);if(!c)return;
  const st=daySessionState(c,date),r=st.r,badge=st.cls==="held"?"present":st.cls==="cancelled"?"absent":"pending";
  const canView=!!r&&!r.cancelled&&date<=today();
- openModal(`<h2>${esc(c.name)}</h2><div class="muted">${esc(fmtClassDate(date))}${(r&&r.time)||c.time?" · "+esc((r&&r.time)||c.time):""}</div>
+ openModal(`<h2>${esc(c.name)}</h2><div class="muted">${esc(fmtClassDate(date))}${(r&&r.time)||classTimeOn(c,date)?" · "+esc((r&&r.time)||classTimeOn(c,date)):""}</div>
  <div style="margin:10px 0"><span class="badge ${badge}">${st.label}</span>${r&&r.time?' <span class="small muted">(time changed for this day)</span>':""}${r&&r.originalDate&&r.originalDate!==r.date?` <span class="small muted">Moved from ${esc(fmt(r.originalDate))}</span>`:""}</div>
  ${r&&r.cancelled&&r.cancelReason?`<div class="small muted">Reason: ${esc(r.cancelReason)}</div>`:""}
  ${r&&r.notes?`<h3 style="margin-top:10px">Notes</h3><div class="small" style="margin-top:4px">${esc(r.notes)}</div>`:`<div class="small muted" style="margin-top:6px">No notes for this day.</div>`}
